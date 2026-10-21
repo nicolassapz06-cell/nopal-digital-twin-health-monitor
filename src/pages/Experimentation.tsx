@@ -414,13 +414,21 @@ export default function Experimentation() {
   // Crear visor 3D para simulador (solo carga una vez)
   useEffect(() => {
     const container = simViewerRef.current;
-    if (!container || !modelUrl || !showSprouts3D) return;
+    if (!container || !modelUrl || !showSprouts3D) {
+      return;
+    }
 
-    // Si ya existe un viewer, no recrearlo
-    const existingViewer = container.querySelector('model-viewer');
-    if (existingViewer) return;
+    // Si ya existe un viewer cargado, no recrearlo
+    const existingViewer = container.querySelector('#sim-3d-viewer');
+    if (existingViewer) {
+      return;
+    }
 
-    container.innerHTML = '';
+    // Limpiar cualquier contenido previo
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    
     setSimLoadProgress(0);
     setSimModelLoaded(false);
     
@@ -440,21 +448,34 @@ export default function Experimentation() {
     viewer.style.backgroundColor = '#1a1a2e';
 
     // Evento de progreso de carga
-    viewer.addEventListener('progress', (e: Event) => {
-      const event = e as CustomEvent<{totalProgress: number}>;
-      const progress = Math.round((event.detail?.totalProgress ?? 0) * 100);
-      setSimLoadProgress(progress);
-    });
+    const handleProgress = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail;
+        if (detail && typeof detail.totalProgress === 'number') {
+          const progress = Math.round(detail.totalProgress * 100);
+          setSimLoadProgress(progress);
+        }
+      } catch {
+        // Ignorar errores de progreso
+      }
+    };
 
-    viewer.addEventListener('load', () => {
+    const handleLoad = () => {
       setSimModelLoaded(true);
       setSimLoadProgress(100);
-    });
+    };
+
+    viewer.addEventListener('progress', handleProgress);
+    viewer.addEventListener('load', handleLoad);
 
     container.appendChild(viewer);
 
     return () => {
-      container.innerHTML = '';
+      viewer.removeEventListener('progress', handleProgress);
+      viewer.removeEventListener('load', handleLoad);
+      if (container.contains(viewer)) {
+        container.removeChild(viewer);
+      }
       setSimModelLoaded(false);
       setSimLoadProgress(0);
     };

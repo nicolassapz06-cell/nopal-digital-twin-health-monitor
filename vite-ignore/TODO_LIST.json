@@ -1,25 +1,31 @@
 {
-  "summary": "Fase 4: Visualizaci\\u00f3n de brotes simulados en modelo 3D",
+  "summary": "Mejorar CIELAB con tablas/histogramas + escala din\\u00e1mica en simulador",
   "todos": [
     {
       "id": 1,
-      "description": "Agregar estados y lógica para brotes simulados",
+      "description": "Restaurar tablas y datos LAB completos en CIELAB",
       "files": [],
       "status": "complete"
     },
     {
       "id": 2,
-      "description": "Agregar visor 3D con overlay de brotes en Simulador",
+      "description": "Agregar histogramas visuales LAB",
       "files": [],
       "status": "complete"
     },
     {
       "id": 3,
+      "description": "Implementar escala dinámica del modelo 3D en simulador",
+      "files": [],
+      "status": "complete"
+    },
+    {
+      "id": 4,
       "description": "Validar funcionamiento",
       "files": [],
       "status": "complete"
     }
   ],
-  "createdAt": "2026-10-21T18:45:55.883Z",
-  "updatedAt": "2026-10-21T18:48:03.245Z"
+  "createdAt": "2026-10-21T18:52:38.712Z",
+  "updatedAt": "2026-10-21T18:54:07.158Z"
 }

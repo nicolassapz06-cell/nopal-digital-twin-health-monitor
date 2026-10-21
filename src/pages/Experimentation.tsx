@@ -135,19 +135,27 @@ export default function Experimentation() {
     setError(null);
   }, [selectedPlant]);
 
-  // Crear visor 3D
+  // Crear visor 3D (solo cuando cambia modelUrl, no rotate)
   useEffect(() => {
     const container = viewerRef.current;
     if (!container || !modelUrl) return;
 
-    container.innerHTML = '';
+    // Verificar si ya existe un visor con el mismo src
+    const existingViewer = container.querySelector('#experiment-viewer') as HTMLElement | null;
+    if (existingViewer?.getAttribute('src') === modelUrl) return;
+
+    // Limpiar contenido previo de forma segura
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    
     const viewer = document.createElement('model-viewer');
     viewer.id = 'experiment-viewer';
     viewer.setAttribute('src', modelUrl);
     viewer.setAttribute('alt', 'Modelo 3D para análisis');
-    if (rotate) viewer.setAttribute('auto-rotate', '');
+    viewer.setAttribute('auto-rotate', '');
     viewer.setAttribute('camera-controls', '');
-    viewer.setAttribute('camera-orbit', '0deg 75deg 100%');
+    viewer.setAttribute('camera-orbit', '0deg 75deg 105%');
     viewer.setAttribute('exposure', '1.0');
     viewer.setAttribute('shadow-intensity', '0');
     viewer.setAttribute('environment-image', 'neutral');
@@ -156,13 +164,36 @@ export default function Experimentation() {
     viewer.style.height = '100%';
     viewer.style.backgroundColor = '#1a1a2e';
 
-    viewer.addEventListener('load', () => setModelLoaded(true));
-    viewer.addEventListener('error', () => setError('Error al cargar el modelo'));
+    const handleLoad = () => setModelLoaded(true);
+    const handleError = () => setError('Error al cargar el modelo');
+    
+    viewer.addEventListener('load', handleLoad);
+    viewer.addEventListener('error', handleError);
 
     container.appendChild(viewer);
 
-    return () => {container.innerHTML = '';};
-  }, [modelUrl, rotate]);
+    return () => {
+      viewer.removeEventListener('load', handleLoad);
+      viewer.removeEventListener('error', handleError);
+      if (container.contains(viewer)) {
+        container.removeChild(viewer);
+      }
+    };
+  }, [modelUrl]);
+
+  // Controlar rotación por separado (sin recrear el visor)
+  useEffect(() => {
+    const container = viewerRef.current;
+    if (!container) return;
+    const viewer = container.querySelector('#experiment-viewer');
+    if (!viewer) return;
+    
+    if (rotate) {
+      viewer.setAttribute('auto-rotate', '');
+    } else {
+      viewer.removeAttribute('auto-rotate');
+    }
+  }, [rotate]);
 
   // Capturar y analizar
   const captureAndAnalyze = async () => {

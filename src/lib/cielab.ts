@@ -240,14 +240,29 @@ export function analyzeImageData(imageData: ImageData): ImageAnalysis {
   
   const validPixels = lValues.length;
   
-  // Calcular estadísticas
+  // Calcular estadísticas (enfoque iterativo para evitar stack overflow con millones de píxeles)
   const calcStats = (values: number[]) => {
     if (values.length === 0) return { min: 0, max: 0, mean: 0, stdDev: 0 };
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    const variance = values.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / values.length;
-    const stdDev = Math.sqrt(variance);
+    
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    
+    for (let i = 0; i < values.length; i++) {
+      const val = values[i];
+      if (val < min) min = val;
+      if (val > max) max = val;
+      sum += val;
+    }
+    
+    const mean = sum / values.length;
+    
+    let varianceSum = 0;
+    for (let i = 0; i < values.length; i++) {
+      varianceSum += (values[i] - mean) ** 2;
+    }
+    const stdDev = Math.sqrt(varianceSum / values.length);
+    
     return {
       min: Math.round(min * 100) / 100,
       max: Math.round(max * 100) / 100,

@@ -61,6 +61,7 @@ export default function Experimentation() {
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [showSprouts3D, setShowSprouts3D] = useState(false);
   const [simModelLoaded, setSimModelLoaded] = useState(false);
+  const [simLoadProgress, setSimLoadProgress] = useState(0);
   const [sproutPositions, setSproutPositions] = useState<{x: number;y: number;size: number;delay: number;}[]>([]);
 
   const [expForm, setExpForm] = useState({
@@ -410,12 +411,19 @@ export default function Experimentation() {
     }
   }, [simResult]);
 
-  // Crear visor 3D para simulador con escala dinámica
+  // Crear visor 3D para simulador (solo carga una vez)
   useEffect(() => {
     const container = simViewerRef.current;
     if (!container || !modelUrl || !showSprouts3D) return;
 
+    // Si ya existe un viewer, no recrearlo
+    const existingViewer = container.querySelector('model-viewer');
+    if (existingViewer) return;
+
     container.innerHTML = '';
+    setSimLoadProgress(0);
+    setSimModelLoaded(false);
+    
     const viewer = document.createElement('model-viewer');
     viewer.id = 'sim-3d-viewer';
     viewer.setAttribute('src', modelUrl);
@@ -430,26 +438,46 @@ export default function Experimentation() {
     viewer.style.width = '100%';
     viewer.style.height = '100%';
     viewer.style.backgroundColor = '#1a1a2e';
-    
-    // Aplicar escala dinámica basada en predicción de crecimiento
-    if (simResult && simResult.height) {
-      const baseHeight = 25; // Altura inicial en cm
-      const scaleFactor = Math.max(1, simResult.height / baseHeight);
-      // Escalar principalmente en Y (altura) con un poco en X y Z
-      const scaleY = scaleFactor;
-      const scaleXZ = 1 + (scaleFactor - 1) * 0.3; // Crecimiento lateral más sutil
-      viewer.setAttribute('scale', `${scaleXZ} ${scaleY} ${scaleXZ}`);
-    }
 
-    viewer.addEventListener('load', () => setSimModelLoaded(true));
+    // Evento de progreso de carga
+    viewer.addEventListener('progress', (e: Event) => {
+      const event = e as CustomEvent<{totalProgress: number}>;
+      const progress = Math.round((event.detail?.totalProgress ?? 0) * 100);
+      setSimLoadProgress(progress);
+    });
+
+    viewer.addEventListener('load', () => {
+      setSimModelLoaded(true);
+      setSimLoadProgress(100);
+    });
 
     container.appendChild(viewer);
 
     return () => {
       container.innerHTML = '';
       setSimModelLoaded(false);
+      setSimLoadProgress(0);
     };
-  }, [modelUrl, showSprouts3D, simResult]);
+  }, [modelUrl, showSprouts3D]);
+
+  // Actualizar escala dinámica cuando cambie simResult (sin recargar modelo)
+  useEffect(() => {
+    const container = simViewerRef.current;
+    if (!container || !simModelLoaded) return;
+
+    const viewer = container.querySelector('model-viewer');
+    if (!viewer) return;
+
+    if (simResult && simResult.height) {
+      const baseHeight = 25;
+      const scaleFactor = Math.max(1, simResult.height / baseHeight);
+      const scaleY = scaleFactor;
+      const scaleXZ = 1 + (scaleFactor - 1) * 0.3;
+      viewer.setAttribute('scale', `${scaleXZ} ${scaleY} ${scaleXZ}`);
+    } else {
+      viewer.setAttribute('scale', '1 1 1');
+    }
+  }, [simResult, simModelLoaded]);
 
   const getConditionIcon = (status: string) => {
     switch (status) {
@@ -1353,12 +1381,28 @@ export default function Experimentation() {
                         </div>
                   }
 
-                      {/* Loading overlay */}
+                      {/* Loading overlay con barra de progreso */}
                       {!simModelLoaded &&
-                  <div data-ev-id="ev_sim_3d_loading" className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <div data-ev-id="ev_sim_3d_loading_content" className="flex flex-col items-center gap-2 text-white">
+                  <div data-ev-id="ev_sim_3d_loading" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-sm">
+                          <div data-ev-id="ev_sim_3d_loading_content" className="flex flex-col items-center gap-3 text-white">
                             <Loader2 className="h-8 w-8 animate-spin" />
-                            <span data-ev-id="ev_sim_3d_loading_text" className="text-sm">Cargando modelo...</span>
+                            <span data-ev-id="ev_sim_3d_loading_text" className="text-sm font-medium">
+                              {simLoadProgress < 100 ? 'Cargando modelo...' : 'Preparando...'}
+                            </span>
+                          </div>
+                          
+                          {/* Barra de progreso */}
+                          <div data-ev-id="ev_sim_progress_container" className="w-48">
+                            <div data-ev-id="ev_sim_progress_bar" className="h-2 w-full overflow-hidden rounded-full bg-white/20">
+                              <div
+                                data-ev-id="ev_sim_progress_fill"
+                                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300"
+                                style={{ width: `${simLoadProgress}%` }}
+                              />
+                            </div>
+                            <p data-ev-id="ev_sim_progress_text" className="mt-1 text-center text-xs text-white/70">
+                              {simLoadProgress}%
+                            </p>
                           </div>
                         </div>
                   }

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import { LayoutV2 } from '@/components/LayoutV2';
 import { useAuth } from '@/contexts/auth-context';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,9 +15,15 @@ import {
 '@/lib/cielab';
 
 type Plant = Tables<'plants'>;
+type GrowthExperiment = Tables<'growth_experiments'>;
+
+type TabType = 'cielab' | 'experiments';
+
+const INPUT = 'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30';
 
 export default function Experimentation() {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabType>('cielab');
   const [plants, setPlants] = useState<Plant[]>([]);
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -28,33 +34,56 @@ export default function Experimentation() {
   const [activeChannel, setActiveChannel] = useState<'original' | 'l' | 'a' | 'b' | 'health'>('original');
   const [channelImages, setChannelImages] = useState<Record<string, string>>({});
   const [rotate, setRotate] = useState(true);
-
   const [modelLoaded, setModelLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Experimentos
+  const [experiments, setExperiments] = useState<GrowthExperiment[]>([]);
+  const [showExpForm, setShowExpForm] = useState(false);
+  const [savingExp, setSavingExp] = useState(false);
+  const [expForm, setExpForm] = useState({
+    name: '',
+    condition_label: '',
+    temperature_c: '',
+    humidity_percent: '',
+    soil_ph: '',
+    light_intensity_lux: '',
+    irrigation_frequency_days: '',
+    duration_days: '',
+    initial_height_cm: '',
+    initial_cladode_count: '',
+    initial_sprouts: '',
+    final_height_cm: '',
+    final_cladode_count: '',
+    final_sprouts: '',
+    health_status: '',
+    notes: '',
+    is_control: false
+  });
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Cargar plantas
-  const loadPlants = useCallback(async () => {
+  // Cargar plantas y experimentos
+  const loadData = useCallback(async () => {
     if (!supabase || !user) return;
     setLoading(true);
 
-    const { data } = await supabase.
-    from('plants').
-    select('*').
-    eq('user_id', user.id).
-    not('model_3d_id', 'is', null).
-    order('name');
+    const [plantsRes, expRes] = await Promise.all([
+    supabase.from('plants').select('*').eq('user_id', user.id).not('model_3d_id', 'is', null).order('name'),
+    supabase.from('growth_experiments').select('*').eq('user_id', user.id).order('created_at', { ascending: false })]
+    );
 
-    setPlants(data ?? []);
-    if (data && data.length > 0 && !selectedPlant) {
-      setSelectedPlant(data[0]);
+    setPlants(plantsRes.data ?? []);
+    setExperiments(expRes.data ?? []);
+
+    if (plantsRes.data && plantsRes.data.length > 0 && !selectedPlant) {
+      setSelectedPlant(plantsRes.data[0]);
     }
     setLoading(false);
   }, [user, selectedPlant]);
 
-  useEffect(() => {loadPlants();}, [loadPlants]);
+  useEffect(() => {loadData();}, [loadData]);
 
   // Cargar modelo cuando cambia la planta
   useEffect(() => {
@@ -74,7 +103,6 @@ export default function Experimentation() {
       }
     };
     loadModel();
-    // Limpiar análisis previo
     setAnalysis(null);
     setCapturedImage(null);
     setChannelImages({});
@@ -104,7 +132,6 @@ export default function Experimentation() {
     viewer.style.height = '100%';
     viewer.style.backgroundColor = '#1a1a2e';
 
-    // Eventos de carga
     viewer.addEventListener('load', () => setModelLoaded(true));
     viewer.addEventListener('error', () => setError('Error al cargar el modelo'));
 
@@ -121,7 +148,6 @@ export default function Experimentation() {
 
     const viewer = container.querySelector('model-viewer') as HTMLElement & {
       toBlob: (options?: {mimeType?: string;idealAspect?: boolean;}) => Promise<Blob>;
-      modelIsVisible: boolean;
     };
 
     if (!viewer) {
@@ -133,24 +159,16 @@ export default function Experimentation() {
     setError(null);
 
     try {
-      // Pausar rotación para captura
       viewer.removeAttribute('auto-rotate');
-
-      // Esperar a que se estabilice el render
       await new Promise((r) => setTimeout(r, 200));
 
-      // Capturar usando la API correcta de model-viewer (Promise)
       const blob = await viewer.toBlob({ mimeType: 'image/png' });
 
-      if (!blob) {
-        throw new Error('No se pudo capturar la imagen');
-      }
+      if (!blob) throw new Error('No se pudo capturar la imagen');
 
-      // Crear imagen desde blob
       const url = URL.createObjectURL(blob);
       setCapturedImage(url);
 
-      // Procesar imagen
       const img = new Image();
       img.onload = () => {
         const ctx = canvas.getContext('2d');
@@ -161,30 +179,23 @@ export default function Experimentation() {
         ctx.drawImage(img, 0, 0);
 
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        // Analizar imagen
         const result = analyzeImageData(imageData);
         setAnalysis(result);
 
-        // Generar imágenes de canales
         const channels: Record<string, string> = { original: url };
 
-        // Canal L*
         const lData = generateChannelImage(imageData, 'l');
         ctx.putImageData(lData, 0, 0);
         channels.l = canvas.toDataURL();
 
-        // Canal a*
         const aData = generateChannelImage(imageData, 'a');
         ctx.putImageData(aData, 0, 0);
         channels.a = canvas.toDataURL();
 
-        // Canal b*
         const bData = generateChannelImage(imageData, 'b');
         ctx.putImageData(bData, 0, 0);
         channels.b = canvas.toDataURL();
 
-        // Mapa de salud
         const healthData = generateHealthMap(imageData);
         ctx.putImageData(healthData, 0, 0);
         channels.health = canvas.toDataURL();
@@ -192,10 +203,7 @@ export default function Experimentation() {
         setChannelImages(channels);
         setCapturing(false);
 
-        // Restaurar rotación si estaba activa
-        if (rotate) {
-          viewer.setAttribute('auto-rotate', '');
-        }
+        if (rotate) viewer.setAttribute('auto-rotate', '');
       };
 
       img.onerror = () => {
@@ -204,71 +212,93 @@ export default function Experimentation() {
       };
 
       img.src = url;
-
     } catch (err) {
       console.error('Error en captura:', err);
       setError('Error al capturar. Asegúrate de que el modelo esté cargado.');
       setCapturing(false);
-
-      // Restaurar rotación
       if (rotate) {
-        viewer.setAttribute('auto-rotate', '');
+        const viewer = container.querySelector('model-viewer');
+        viewer?.setAttribute('auto-rotate', '');
       }
     }
   };
 
-  // Exportar análisis
+  // Guardar experimento
+  const handleSaveExperiment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !user || !selectedPlant) return;
+    setSavingExp(true);
+
+    const num = (v: string) => v === '' ? null : Number(v);
+
+    // Calcular cambios
+    const heightChange = expForm.final_height_cm && expForm.initial_height_cm ?
+    Number(expForm.final_height_cm) - Number(expForm.initial_height_cm) :
+    null;
+    const sproutsChange = expForm.final_sprouts && expForm.initial_sprouts ?
+    Number(expForm.final_sprouts) - Number(expForm.initial_sprouts) :
+    null;
+    const cladodeChange = expForm.final_cladode_count && expForm.initial_cladode_count ?
+    Number(expForm.final_cladode_count) - Number(expForm.initial_cladode_count) :
+    null;
+
+    await supabase.from('growth_experiments').insert({
+      user_id: user.id,
+      plant_id: selectedPlant.id,
+      name: expForm.name,
+      condition_label: expForm.condition_label || null,
+      temperature_c: num(expForm.temperature_c),
+      humidity_percent: num(expForm.humidity_percent),
+      soil_ph: num(expForm.soil_ph),
+      light_intensity_lux: num(expForm.light_intensity_lux),
+      irrigation_frequency_days: num(expForm.irrigation_frequency_days),
+      duration_days: num(expForm.duration_days),
+      initial_height_cm: num(expForm.initial_height_cm),
+      initial_cladode_count: num(expForm.initial_cladode_count),
+      initial_sprouts: num(expForm.initial_sprouts),
+      final_height_cm: num(expForm.final_height_cm),
+      final_cladode_count: num(expForm.final_cladode_count),
+      final_sprouts: num(expForm.final_sprouts),
+      height_change_cm: heightChange,
+      new_sprouts: sproutsChange,
+      cladode_change: cladodeChange,
+      health_status: expForm.health_status || null,
+      notes: expForm.notes || null,
+      is_control: expForm.is_control
+    });
+
+    setExpForm({
+      name: '', condition_label: '', temperature_c: '', humidity_percent: '',
+      soil_ph: '', light_intensity_lux: '', irrigation_frequency_days: '',
+      duration_days: '', initial_height_cm: '', initial_cladode_count: '',
+      initial_sprouts: '', final_height_cm: '', final_cladode_count: '',
+      final_sprouts: '', health_status: '', notes: '', is_control: false
+    });
+    setShowExpForm(false);
+    setSavingExp(false);
+    loadData();
+  };
+
+  const deleteExperiment = async (id: string) => {
+    if (!supabase || !user || !confirm('¿Eliminar este experimento?')) return;
+    await supabase.from('growth_experiments').delete().eq('id', id);
+    loadData();
+  };
+
+  // Exportar análisis CIELAB
   const exportAnalysis = () => {
     if (!analysis || !selectedPlant) return;
-
-    const report = `REPORTE DE ANÁLISIS CIELAB
-=============================
-Planta: ${selectedPlant.name}
-Fecha: ${new Date().toLocaleString('es-MX')}
-
-ESTADÍSTICAS POR CANAL
-----------------------
-L* (Luminosidad):
-  Mínimo: ${analysis.labStats.l.min}
-  Máximo: ${analysis.labStats.l.max}
-  Media: ${analysis.labStats.l.mean}
-  Desv. Est.: ${analysis.labStats.l.stdDev}
-
-a* (Verde-Rojo):
-  Mínimo: ${analysis.labStats.a.min}
-  Máximo: ${analysis.labStats.a.max}
-  Media: ${analysis.labStats.a.mean}
-  Desv. Est.: ${analysis.labStats.a.stdDev}
-
-b* (Azul-Amarillo):
-  Mínimo: ${analysis.labStats.b.min}
-  Máximo: ${analysis.labStats.b.max}
-  Media: ${analysis.labStats.b.mean}
-  Desv. Est.: ${analysis.labStats.b.stdDev}
-
-MÉTRICAS DE SALUD
-------------------
-Área verde (a* < -5): ${analysis.healthMetrics.greenArea}%
-Área clorótica: ${analysis.healthMetrics.chloroticArea}%
-Área necrótica: ${analysis.healthMetrics.necroticArea}%
-Área saludable: ${analysis.healthMetrics.healthyArea}%
-
-ESTADO GENERAL: ${analysis.overallStatus.toUpperCase()}
-Píxeles analizados: ${analysis.pixelCount.toLocaleString()}
-`;
-
+    const report = `REPORTE DE ANÁLISIS CIELAB\n${'='.repeat(30)}\nPlanta: ${selectedPlant.name}\nFecha: ${new Date().toLocaleString('es-MX')}\n\nESTADÍSTICAS POR CANAL\n${'-'.repeat(20)}\nL* (Luminosidad): Media=${analysis.labStats.l.mean}, σ=${analysis.labStats.l.stdDev}\na* (Verde-Rojo): Media=${analysis.labStats.a.mean}, σ=${analysis.labStats.a.stdDev}\nb* (Azul-Amarillo): Media=${analysis.labStats.b.mean}, σ=${analysis.labStats.b.stdDev}\n\nMÉTRICAS DE SALUD\n${'-'.repeat(20)}\nÁrea verde: ${analysis.healthMetrics.greenArea}%\nÁrea clorótica: ${analysis.healthMetrics.chloroticArea}%\nÁrea necrótica: ${analysis.healthMetrics.necroticArea}%\n\nESTADO: ${analysis.overallStatus.toUpperCase()}\nPíxeles: ${analysis.pixelCount.toLocaleString()}`;
     const blob = new Blob([report], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `analisis-cielab-${selectedPlant.name}-${Date.now()}.txt`;
+    a.href = URL.createObjectURL(blob);
+    a.download = `cielab-${selectedPlant.name}-${Date.now()}.txt`;
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'healthy':return 'bg-green-500';
+      case 'healthy':case 'excellent':case 'good':return 'bg-green-500';
       case 'moderate':return 'bg-yellow-500';
       case 'stressed':return 'bg-orange-500';
       case 'critical':return 'bg-red-500';
@@ -279,6 +309,8 @@ Píxeles analizados: ${analysis.pixelCount.toLocaleString()}
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'healthy':return 'Saludable';
+      case 'excellent':return 'Excelente';
+      case 'good':return 'Bueno';
       case 'moderate':return 'Moderado';
       case 'stressed':return 'Estrés';
       case 'critical':return 'Crítico';
@@ -286,10 +318,12 @@ Píxeles analizados: ${analysis.pixelCount.toLocaleString()}
     }
   };
 
+  const plantExperiments = experiments.filter((e) => e.plant_id === selectedPlant?.id);
+
   if (loading) {
     return (
       <LayoutV2>
-        <div data-ev-id="ev_6add58d781" className="flex h-64 items-center justify-center">
+        <div data-ev-id="ev_7528a6fb86" className="flex h-64 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </LayoutV2>);
@@ -299,11 +333,11 @@ Píxeles analizados: ${analysis.pixelCount.toLocaleString()}
   if (plants.length === 0) {
     return (
       <LayoutV2>
-        <div data-ev-id="ev_f3b8d08825" className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+        <div data-ev-id="ev_f6d0974e57" className="flex flex-col items-center justify-center gap-4 py-20 text-center">
           <FlaskConical className="h-16 w-16 text-muted-foreground" />
-          <div data-ev-id="ev_fab7499ca5">
-            <h1 data-ev-id="ev_f5a6d929d8" className="text-xl font-semibold">Sin modelos 3D</h1>
-            <p data-ev-id="ev_04907bef18" className="text-muted-foreground">Agrega un modelo 3D a una planta para comenzar el análisis.</p>
+          <div data-ev-id="ev_e221e69744">
+            <h1 data-ev-id="ev_98454a831d" className="text-xl font-semibold">Sin modelos 3D</h1>
+            <p data-ev-id="ev_e00c5f3acb" className="text-muted-foreground">Agrega un modelo 3D a una planta para comenzar.</p>
           </div>
         </div>
       </LayoutV2>);
@@ -312,300 +346,374 @@ Píxeles analizados: ${analysis.pixelCount.toLocaleString()}
 
   return (
     <LayoutV2>
-      <canvas data-ev-id="ev_f18f13bff5" ref={canvasRef} className="hidden" />
-      
-      <header data-ev-id="ev_b68cf30f36" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div data-ev-id="ev_a86354d094">
-          <h1 data-ev-id="ev_9b11daf899" className="flex items-center gap-2 text-2xl font-semibold">
+      <canvas data-ev-id="ev_75d55deb32" ref={canvasRef} className="hidden" />
+
+      {/* Header */}
+      <header data-ev-id="ev_7ccdef1a27" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div data-ev-id="ev_20c23e4075">
+          <h1 data-ev-id="ev_c5c29c8ca5" className="flex items-center gap-2 text-2xl font-semibold">
             <FlaskConical className="h-6 w-6 text-primary" />
             Experimentación
           </h1>
-          <p data-ev-id="ev_22178e6eb0" className="text-sm text-muted-foreground">Análisis CIELAB del modelo 3D texturizado</p>
+          <p data-ev-id="ev_ce7285ee3f" className="text-sm text-muted-foreground">Análisis CIELAB y experimentos de crecimiento</p>
         </div>
-        
-        <select data-ev-id="ev_5198eee1ab"
+
+        <select data-ev-id="ev_1cb60a8e76"
         value={selectedPlant?.id ?? ''}
         onChange={(e) => setSelectedPlant(plants.find((p) => p.id === e.target.value) ?? null)}
         className="rounded-lg border border-border bg-card px-4 py-2 text-sm">
 
           {plants.map((p) =>
-          <option data-ev-id="ev_2b7645a46b" key={p.id} value={p.id}>{p.name}</option>
+          <option data-ev-id="ev_3d9f498497" key={p.id} value={p.id}>{p.name}</option>
           )}
         </select>
       </header>
 
-      <div data-ev-id="ev_f78868a5c3" className="grid gap-6 lg:grid-cols-2">
-        {/* Panel izquierdo: Visor 3D */}
-        <div data-ev-id="ev_e478ba6cb0" className="flex flex-col gap-4">
-          <div data-ev-id="ev_95db9f9a0c" className="overflow-hidden rounded-2xl border border-border bg-card">
-            <div data-ev-id="ev_cb9313e8dc" className="flex items-center justify-between border-b border-border p-3">
-              <div data-ev-id="ev_1ae8065a13" className="flex items-center gap-2">
-                <span data-ev-id="ev_fe3be4dbf8" className="text-sm font-medium">Modelo 3D</span>
-                {modelLoaded &&
-                <span data-ev-id="ev_babb17b36e" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    Listo
-                  </span>
-                }
-              </div>
-              <div data-ev-id="ev_5aae11ea1f" className="flex gap-2">
-                <button data-ev-id="ev_26b4aaee3e"
-                onClick={() => setRotate(!rotate)}
-                className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-                title={rotate ? 'Detener rotación' : 'Rotar'}>
+      {/* Tabs */}
+      <div data-ev-id="ev_99014805cd" className="flex gap-2 border-b border-border">
+        <button data-ev-id="ev_dadc54400a"
+        onClick={() => setActiveTab('cielab')}
+        className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+        activeTab === 'cielab' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
+        }>
 
-                  <RotateCcw className="h-4 w-4" />
-                </button>
-                <button data-ev-id="ev_7af4c0493a"
+          <BarChart3 className="h-4 w-4" /> Análisis CIELAB
+        </button>
+        <button data-ev-id="ev_ac8829be99"
+        onClick={() => setActiveTab('experiments')}
+        className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+        activeTab === 'experiments' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
+        }>
+
+          <Beaker className="h-4 w-4" /> Experimentos
+          {plantExperiments.length > 0 &&
+          <span data-ev-id="ev_1f225bd310" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs">{plantExperiments.length}</span>
+          }
+        </button>
+      </div>
+
+      {/* Tab: CIELAB */}
+      {activeTab === 'cielab' &&
+      <div data-ev-id="ev_108f0ecef3" className="grid gap-6 lg:grid-cols-2">
+          {/* Visor 3D */}
+          <div data-ev-id="ev_0733e0a78a" className="flex flex-col gap-4">
+            <div data-ev-id="ev_77dd8ec0de" className="overflow-hidden rounded-2xl border border-border bg-card">
+              <div data-ev-id="ev_b803b069a8" className="flex items-center justify-between border-b border-border p-3">
+                <div data-ev-id="ev_3e67b2e808" className="flex items-center gap-2">
+                  <span data-ev-id="ev_7b45981aa3" className="text-sm font-medium">Modelo 3D</span>
+                  {modelLoaded &&
+                <span data-ev-id="ev_45ae5f3691" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      Listo
+                    </span>
+                }
+                </div>
+                <div data-ev-id="ev_f3d366438d" className="flex gap-2">
+                  <button data-ev-id="ev_a574828e94"
+                onClick={() => setRotate(!rotate)}
+                className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
+
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                  <button data-ev-id="ev_d8cc211dd3"
                 onClick={captureAndAnalyze}
                 disabled={capturing || !modelUrl || !modelLoaded}
                 className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
 
-                  {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                  {capturing ? 'Analizando...' : 'Capturar y analizar'}
-                </button>
-              </div>
-            </div>
-            
-            <div data-ev-id="ev_952388b521" className="relative h-80 w-full">
-              <div data-ev-id="ev_cddf8d0687" ref={viewerRef} className="h-full w-full" />
-              {/* Indicador de carga del modelo - FUERA del viewerRef */}
-              {modelUrl && !modelLoaded &&
-              <div data-ev-id="ev_53e5a67328" className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <div data-ev-id="ev_5ea2c5db04" className="flex flex-col items-center gap-2 text-white">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <span data-ev-id="ev_a016289ff5" className="text-sm">Cargando modelo...</span>
-                  </div>
+                    {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                    {capturing ? 'Analizando...' : 'Capturar'}
+                  </button>
                 </div>
-              }
-            </div>
-            
-            {/* Mensaje de error */}
-            {error &&
-            <div data-ev-id="ev_0290a856be" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
-                {error}
               </div>
-            }
-          </div>
 
-          {/* Selector de canal */}
-          {analysis &&
-          <div data-ev-id="ev_eaa5484bc6" className="rounded-xl border border-border bg-card p-4">
-              <h3 data-ev-id="ev_d212a008cb" className="mb-3 text-sm font-medium">Visualización de canales</h3>
-              <div data-ev-id="ev_67241e84b1" className="flex flex-wrap gap-2">
-                {(['original', 'l', 'a', 'b', 'health'] as const).map((ch) =>
-              <button data-ev-id="ev_cae9fc6ff3"
+              <div data-ev-id="ev_3dcf0e68cf" className="relative h-72 w-full">
+                <div data-ev-id="ev_73e514e17a" ref={viewerRef} className="h-full w-full" />
+                {modelUrl && !modelLoaded &&
+              <div data-ev-id="ev_b9f5cb464b" className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <div data-ev-id="ev_ffe5dd22f1" className="flex flex-col items-center gap-2 text-white">
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                      <span data-ev-id="ev_70438eeacd" className="text-sm">Cargando...</span>
+                    </div>
+                  </div>
+              }
+              </div>
+
+              {error &&
+            <div data-ev-id="ev_f184b516ae" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+                  {error}
+                </div>
+            }
+            </div>
+
+            {/* Canales */}
+            {analysis &&
+          <div data-ev-id="ev_fe48445357" className="rounded-xl border border-border bg-card p-4">
+                <h3 data-ev-id="ev_68f78ad7a5" className="mb-3 text-sm font-medium">Canales</h3>
+                <div data-ev-id="ev_30e1213d9d" className="flex flex-wrap gap-2">
+                  {(['original', 'l', 'a', 'b', 'health'] as const).map((ch) =>
+              <button data-ev-id="ev_2c61407a8b"
               key={ch}
               onClick={() => setActiveChannel(ch)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeChannel === ch ?
-              'bg-primary text-primary-foreground' :
-              'bg-muted hover:bg-muted/80'}`
-              }>
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${activeChannel === ch ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
 
-                    {ch === 'original' ? 'Original' :
-                ch === 'l' ? 'L* (Luz)' :
-                ch === 'a' ? 'a* (Verde-Rojo)' :
-                ch === 'b' ? 'b* (Azul-Amarillo)' :
-                'Mapa de salud'}
-                  </button>
+                      {ch === 'original' ? 'Original' : ch === 'l' ? 'L*' : ch === 'a' ? 'a*' : ch === 'b' ? 'b*' : 'Salud'}
+                    </button>
               )}
-              </div>
-              
-              {/* Imagen del canal seleccionado */}
-              {channelImages[activeChannel] &&
-            <div data-ev-id="ev_69491854ad" className="mt-4">
-                  <img data-ev-id="ev_90c9827e90"
-              src={channelImages[activeChannel]}
-              alt={`Canal ${activeChannel}`}
-              className="w-full rounded-lg border border-border" />
-
-                  {activeChannel !== 'original' && activeChannel !== 'health' &&
-              <div data-ev-id="ev_01015f57f1" className="mt-2 rounded-lg bg-muted/50 p-3 text-xs">
-                      <p data-ev-id="ev_908787c0b4" className="font-medium">{CHANNEL_INFO[activeChannel].fullName}</p>
-                      <p data-ev-id="ev_4235be6e5f" className="text-muted-foreground">{CHANNEL_INFO[activeChannel].plantMeaning}</p>
-                    </div>
-              }
                 </div>
+                {channelImages[activeChannel] &&
+            <img data-ev-id="ev_85558b5beb" src={channelImages[activeChannel]} alt={activeChannel} className="mt-3 w-full rounded-lg" />
             }
-            </div>
+              </div>
           }
-        </div>
+          </div>
 
-        {/* Panel derecho: Resultados del análisis */}
-        <div data-ev-id="ev_f48a4e981f" className="flex flex-col gap-4">
-          {!analysis ?
-          <div data-ev-id="ev_d914ce07a6" className="flex h-80 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/50 text-center">
-              <Camera className="h-12 w-12 text-muted-foreground" />
-              <div data-ev-id="ev_97ed73fec1">
-                <p data-ev-id="ev_72e876af7c" className="font-medium">Sin análisis</p>
-                <p data-ev-id="ev_1afa9e18c8" className="text-sm text-muted-foreground">Captura una vista del modelo para analizar</p>
+          {/* Resultados */}
+          <div data-ev-id="ev_8b5f11949d" className="flex flex-col gap-4">
+            {!analysis ?
+          <div data-ev-id="ev_1235cbe1b1" className="flex h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border text-center">
+                <Camera className="h-12 w-12 text-muted-foreground" />
+                <p data-ev-id="ev_33091c1e9c" className="text-sm text-muted-foreground">Captura una vista para analizar</p>
+              </div> :
+
+          <>
+                <div data-ev-id="ev_ee4a46ea56" className="rounded-2xl border border-border bg-card p-4">
+                  <div data-ev-id="ev_e5292d4950" className="flex items-center justify-between">
+                    <div data-ev-id="ev_d317da19e0">
+                      <p data-ev-id="ev_38fb3f53f4" className="text-sm text-muted-foreground">Estado</p>
+                      <p data-ev-id="ev_b1e338141f" className="text-2xl font-bold">{getStatusLabel(analysis.overallStatus)}</p>
+                    </div>
+                    <div data-ev-id="ev_0c4cba2485" className={`h-14 w-14 rounded-full ${getStatusColor(analysis.overallStatus)}`} />
+                  </div>
+                </div>
+
+                <div data-ev-id="ev_0035a1a89d" className="rounded-2xl border border-border bg-card p-4">
+                  <h3 data-ev-id="ev_94497df870" className="mb-3 flex items-center gap-2 text-sm font-medium"><Leaf className="h-4 w-4" /> Áreas</h3>
+                  <div data-ev-id="ev_bd412a4507" className="grid grid-cols-2 gap-3">
+                    <MetricBar label="Verde" value={analysis.healthMetrics.greenArea} color="bg-green-500" />
+                    <MetricBar label="Saludable" value={analysis.healthMetrics.healthyArea} color="bg-emerald-500" />
+                    <MetricBar label="Clorótica" value={analysis.healthMetrics.chloroticArea} color="bg-yellow-500" />
+                    <MetricBar label="Necrótica" value={analysis.healthMetrics.necroticArea} color="bg-red-500" />
+                  </div>
+                </div>
+
+                <div data-ev-id="ev_39552e1a17" className="rounded-2xl border border-border bg-card p-4">
+                  <h3 data-ev-id="ev_a70c182687" className="mb-3 text-sm font-medium">Estadísticas LAB</h3>
+                  <div data-ev-id="ev_9ef6755c76" className="flex flex-col gap-3 text-xs">
+                    <div data-ev-id="ev_4f1b0de3c1" className="flex justify-between"><span data-ev-id="ev_6206bf5529">L* (Luminosidad)</span><span data-ev-id="ev_934ac04fd7" className="font-medium">{analysis.labStats.l.mean} ± {analysis.labStats.l.stdDev}</span></div>
+                    <div data-ev-id="ev_053ff50060" className="flex justify-between"><span data-ev-id="ev_f7366649bd">a* (Verde-Rojo)</span><span data-ev-id="ev_2170657bbc" className="font-medium">{analysis.labStats.a.mean} ± {analysis.labStats.a.stdDev}</span></div>
+                    <div data-ev-id="ev_cfd2e089d2" className="flex justify-between"><span data-ev-id="ev_0031ae536f">b* (Azul-Amarillo)</span><span data-ev-id="ev_5ae9a6a03d" className="font-medium">{analysis.labStats.b.mean} ± {analysis.labStats.b.stdDev}</span></div>
+                  </div>
+                </div>
+
+                <button data-ev-id="ev_0f265b95fc" onClick={exportAnalysis} className="flex items-center justify-center gap-2 rounded-xl border border-border py-3 text-sm hover:bg-muted">
+                  <Download className="h-4 w-4" /> Exportar
+                </button>
+              </>
+          }
+
+            <div data-ev-id="ev_f39d238060" className="rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+              <h4 data-ev-id="ev_d4b3094df6" className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-300">
+                <Info className="h-4 w-4" /> Guía CIELAB
+              </h4>
+              <p data-ev-id="ev_881d4fa2f8" className="mt-1 text-xs text-blue-700 dark:text-blue-400">
+                <strong data-ev-id="ev_725a0fcfdf">a* negativo</strong> = más clorofila (verde sano). <strong data-ev-id="ev_0f56dc8a13">b* alto</strong> = amarillamiento.
+              </p>
+            </div>
+          </div>
+        </div>
+      }
+
+      {/* Tab: Experimentos */}
+      {activeTab === 'experiments' &&
+      <div data-ev-id="ev_f1338a462e" className="flex flex-col gap-6">
+          {/* Botón nuevo experimento */}
+          <div data-ev-id="ev_7a805b2048" className="flex justify-between">
+            <h2 data-ev-id="ev_ea6f91ac9a" className="text-lg font-semibold">Experimentos de {selectedPlant?.name}</h2>
+            <button data-ev-id="ev_96bdcbb8d4"
+          onClick={() => setShowExpForm(true)}
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+
+              <Plus className="h-4 w-4" /> Nuevo experimento
+            </button>
+          </div>
+
+          {/* Formulario */}
+          {showExpForm &&
+        <div data-ev-id="ev_86ec0a03d9" className="rounded-2xl border border-border bg-card p-4">
+              <h3 data-ev-id="ev_bda7af236a" className="mb-4 font-medium">Registrar experimento</h3>
+              <form data-ev-id="ev_2c59abc38d" onSubmit={handleSaveExperiment} className="flex flex-col gap-4">
+                <div data-ev-id="ev_7e568a70b6" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <label data-ev-id="ev_7b531dcf32" className="flex flex-col gap-1 text-sm">
+                    Nombre *
+                    <input data-ev-id="ev_76b14cac3d" value={expForm.name} onChange={(e) => setExpForm({ ...expForm, name: e.target.value })} className={INPUT} placeholder="Experimento alta luz" required />
+                  </label>
+                  <label data-ev-id="ev_f39c50f1f6" className="flex flex-col gap-1 text-sm">
+                    Condición
+                    <select data-ev-id="ev_98a5eca3c8" value={expForm.condition_label} onChange={(e) => setExpForm({ ...expForm, condition_label: e.target.value })} className={INPUT}>
+                      <option data-ev-id="ev_0e4ef64b90" value="">Seleccionar...</option>
+                      <option data-ev-id="ev_6b272ad964" value="control">Control</option>
+                      <option data-ev-id="ev_cfadcb27c5" value="alta_luz">Alta luz</option>
+                      <option data-ev-id="ev_a130d6ca7e" value="baja_luz">Baja luz</option>
+                      <option data-ev-id="ev_fd061394e8" value="alto_riego">Alto riego</option>
+                      <option data-ev-id="ev_ca874c5393" value="bajo_riego">Bajo riego</option>
+                      <option data-ev-id="ev_afcaa06e86" value="stress_termico">Estrés térmico</option>
+                      <option data-ev-id="ev_becb6ccb6f" value="otro">Otro</option>
+                    </select>
+                  </label>
+                  <label data-ev-id="ev_027acd729b" className="flex flex-col gap-1 text-sm">
+                    Duración (días)
+                    <input data-ev-id="ev_62d50f1c49" type="number" value={expForm.duration_days} onChange={(e) => setExpForm({ ...expForm, duration_days: e.target.value })} className={INPUT} placeholder="30" />
+                  </label>
+                </div>
+
+                <div data-ev-id="ev_af8899c896" className="border-t border-border pt-4">
+                  <p data-ev-id="ev_5e2803de18" className="mb-2 text-sm font-medium">Condiciones aplicadas</p>
+                  <div data-ev-id="ev_479653433c" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                    <label data-ev-id="ev_c31db0f4df" className="flex flex-col gap-1 text-xs">Temp (°C)<input data-ev-id="ev_5289a56ee7" type="number" step="0.1" value={expForm.temperature_c} onChange={(e) => setExpForm({ ...expForm, temperature_c: e.target.value })} className={INPUT} /></label>
+                    <label data-ev-id="ev_af96018fa0" className="flex flex-col gap-1 text-xs">Humedad (%)<input data-ev-id="ev_f9b135b6ab" type="number" step="0.1" value={expForm.humidity_percent} onChange={(e) => setExpForm({ ...expForm, humidity_percent: e.target.value })} className={INPUT} /></label>
+                    <label data-ev-id="ev_6c4ace4ea8" className="flex flex-col gap-1 text-xs">pH<input data-ev-id="ev_caae7994c4" type="number" step="0.1" value={expForm.soil_ph} onChange={(e) => setExpForm({ ...expForm, soil_ph: e.target.value })} className={INPUT} /></label>
+                    <label data-ev-id="ev_25c5f7ea3a" className="flex flex-col gap-1 text-xs">Luz (lux)<input data-ev-id="ev_4cba640c74" type="number" value={expForm.light_intensity_lux} onChange={(e) => setExpForm({ ...expForm, light_intensity_lux: e.target.value })} className={INPUT} /></label>
+                    <label data-ev-id="ev_06802c0e4c" className="flex flex-col gap-1 text-xs">Riego (días)<input data-ev-id="ev_b007f1fecf" type="number" value={expForm.irrigation_frequency_days} onChange={(e) => setExpForm({ ...expForm, irrigation_frequency_days: e.target.value })} className={INPUT} /></label>
+                  </div>
+                </div>
+
+                <div data-ev-id="ev_e7895334cb" className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                  <div data-ev-id="ev_03772d24ca">
+                    <p data-ev-id="ev_cf6f5bf4f0" className="mb-2 text-sm font-medium">Mediciones iniciales</p>
+                    <div data-ev-id="ev_b10135486e" className="grid grid-cols-3 gap-2">
+                      <label data-ev-id="ev_5138fb3880" className="flex flex-col gap-1 text-xs">Altura (cm)<input data-ev-id="ev_fad7f7b844" type="number" step="0.1" value={expForm.initial_height_cm} onChange={(e) => setExpForm({ ...expForm, initial_height_cm: e.target.value })} className={INPUT} /></label>
+                      <label data-ev-id="ev_cfd85e0bf5" className="flex flex-col gap-1 text-xs">Pencas<input data-ev-id="ev_514ed51210" type="number" value={expForm.initial_cladode_count} onChange={(e) => setExpForm({ ...expForm, initial_cladode_count: e.target.value })} className={INPUT} /></label>
+                      <label data-ev-id="ev_54370eb33f" className="flex flex-col gap-1 text-xs">Brotes<input data-ev-id="ev_df48869cdb" type="number" value={expForm.initial_sprouts} onChange={(e) => setExpForm({ ...expForm, initial_sprouts: e.target.value })} className={INPUT} /></label>
+                    </div>
+                  </div>
+                  <div data-ev-id="ev_2271d347c8">
+                    <p data-ev-id="ev_6b12ecee7a" className="mb-2 text-sm font-medium">Mediciones finales</p>
+                    <div data-ev-id="ev_0e909607b1" className="grid grid-cols-3 gap-2">
+                      <label data-ev-id="ev_2e3bb6ade2" className="flex flex-col gap-1 text-xs">Altura (cm)<input data-ev-id="ev_ff1e609244" type="number" step="0.1" value={expForm.final_height_cm} onChange={(e) => setExpForm({ ...expForm, final_height_cm: e.target.value })} className={INPUT} /></label>
+                      <label data-ev-id="ev_0a3fd48c32" className="flex flex-col gap-1 text-xs">Pencas<input data-ev-id="ev_fc39387747" type="number" value={expForm.final_cladode_count} onChange={(e) => setExpForm({ ...expForm, final_cladode_count: e.target.value })} className={INPUT} /></label>
+                      <label data-ev-id="ev_7a2634fc2d" className="flex flex-col gap-1 text-xs">Brotes<input data-ev-id="ev_44f9914235" type="number" value={expForm.final_sprouts} onChange={(e) => setExpForm({ ...expForm, final_sprouts: e.target.value })} className={INPUT} /></label>
+                    </div>
+                  </div>
+                </div>
+
+                <div data-ev-id="ev_70e98342c0" className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                  <label data-ev-id="ev_f4ccef99bc" className="flex flex-col gap-1 text-sm">
+                    Estado de salud
+                    <select data-ev-id="ev_7ea4941a45" value={expForm.health_status} onChange={(e) => setExpForm({ ...expForm, health_status: e.target.value })} className={INPUT}>
+                      <option data-ev-id="ev_98162cd584" value="">Seleccionar...</option>
+                      <option data-ev-id="ev_e1229bbf19" value="excellent">Excelente</option>
+                      <option data-ev-id="ev_686699ab0f" value="good">Bueno</option>
+                      <option data-ev-id="ev_907c64735f" value="moderate">Moderado</option>
+                      <option data-ev-id="ev_43671752e8" value="stressed">Estrés</option>
+                      <option data-ev-id="ev_66205b0f11" value="critical">Crítico</option>
+                    </select>
+                  </label>
+                  <label data-ev-id="ev_5ec2aaa599" className="flex items-center gap-2 text-sm">
+                    <input data-ev-id="ev_b0e7180de1" type="checkbox" checked={expForm.is_control} onChange={(e) => setExpForm({ ...expForm, is_control: e.target.checked })} />
+                    Es experimento control
+                  </label>
+                </div>
+
+                <label data-ev-id="ev_fbe8b8d16c" className="flex flex-col gap-1 text-sm">
+                  Notas
+                  <textarea data-ev-id="ev_deb6964574" value={expForm.notes} onChange={(e) => setExpForm({ ...expForm, notes: e.target.value })} className={INPUT} rows={2} placeholder="Observaciones..." />
+                </label>
+
+                <div data-ev-id="ev_9e6ee744f9" className="flex gap-3">
+                  <button data-ev-id="ev_2489d3a21b" type="button" onClick={() => setShowExpForm(false)} className="flex-1 rounded-lg border border-border py-2 text-sm hover:bg-muted">Cancelar</button>
+                  <button data-ev-id="ev_671c0fc9be" type="submit" disabled={savingExp || !expForm.name} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                    {savingExp && <Loader2 className="h-4 w-4 animate-spin" />} Guardar
+                  </button>
+                </div>
+              </form>
+            </div>
+        }
+
+          {/* Lista de experimentos */}
+          {plantExperiments.length === 0 ?
+        <div data-ev-id="ev_ce1dd5d4e5" className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border py-16 text-center">
+              <Beaker className="h-12 w-12 text-muted-foreground" />
+              <div data-ev-id="ev_9dc8e45a34">
+                <p data-ev-id="ev_3588458666" className="font-medium">Sin experimentos</p>
+                <p data-ev-id="ev_37fe45283e" className="text-sm text-muted-foreground">Registra tu primer experimento de crecimiento</p>
               </div>
             </div> :
 
-          <>
-              {/* Estado general */}
-              <div data-ev-id="ev_b97a81eb2d" className="rounded-2xl border border-border bg-card p-4">
-                <div data-ev-id="ev_33ce9b9eea" className="flex items-center justify-between">
-                  <div data-ev-id="ev_357aeecbbc">
-                    <h3 data-ev-id="ev_63765dc2f9" className="text-sm font-medium text-muted-foreground">Estado general</h3>
-                    <p data-ev-id="ev_6c5cdd8e0c" className="mt-1 text-2xl font-bold">{getStatusLabel(analysis.overallStatus)}</p>
+        <div data-ev-id="ev_375b1b12af" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {plantExperiments.map((exp) =>
+          <div data-ev-id="ev_9797549a5a" key={exp.id} className="rounded-xl border border-border bg-card p-4">
+                  <div data-ev-id="ev_f45cac54a4" className="mb-3 flex items-start justify-between">
+                    <div data-ev-id="ev_c2c3a0b01f">
+                      <h4 data-ev-id="ev_2cacd2de57" className="font-medium">{exp.name}</h4>
+                      {exp.condition_label &&
+                <span data-ev-id="ev_04941fa460" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{exp.condition_label}</span>
+                }
+                    </div>
+                    <button data-ev-id="ev_8a5fec8009" onClick={() => deleteExperiment(exp.id)} className="text-muted-foreground hover:text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <div data-ev-id="ev_8f47d18c23" className={`h-16 w-16 rounded-full ${getStatusColor(analysis.overallStatus)}`} />
+
+                  {exp.duration_days &&
+            <div data-ev-id="ev_648d3cd9d7" className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3" /> {exp.duration_days} días
+                    </div>
+            }
+
+                  {/* Resultados */}
+                  <div data-ev-id="ev_554f2f2f72" className="grid grid-cols-3 gap-2 text-center text-xs">
+                    {exp.height_change_cm !== null &&
+              <div data-ev-id="ev_18af03629e" className="rounded bg-muted p-2">
+                        <div data-ev-id="ev_0973910d65" className="text-muted-foreground">Altura</div>
+                        <div data-ev-id="ev_0a562e1f22" className={`font-medium ${Number(exp.height_change_cm) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {Number(exp.height_change_cm) >= 0 ? '+' : ''}{exp.height_change_cm} cm
+                        </div>
+                      </div>
+              }
+                    {exp.new_sprouts !== null &&
+              <div data-ev-id="ev_a9368dfd91" className="rounded bg-muted p-2">
+                        <div data-ev-id="ev_eef76795f9" className="text-muted-foreground">Brotes</div>
+                        <div data-ev-id="ev_3f6d1dae53" className={`font-medium ${Number(exp.new_sprouts) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {Number(exp.new_sprouts) >= 0 ? '+' : ''}{exp.new_sprouts}
+                        </div>
+                      </div>
+              }
+                    {exp.cladode_change !== null &&
+              <div data-ev-id="ev_b2c8cc3d24" className="rounded bg-muted p-2">
+                        <div data-ev-id="ev_d9f243a5ab" className="text-muted-foreground">Pencas</div>
+                        <div data-ev-id="ev_4ae38743f4" className={`font-medium ${Number(exp.cladode_change) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {Number(exp.cladode_change) >= 0 ? '+' : ''}{exp.cladode_change}
+                        </div>
+                      </div>
+              }
+                  </div>
+
+                  {exp.health_status &&
+            <div data-ev-id="ev_0e8879ff6e" className="mt-3 flex items-center gap-2">
+                      <div data-ev-id="ev_54fcd59ca1" className={`h-2 w-2 rounded-full ${getStatusColor(exp.health_status)}`} />
+                      <span data-ev-id="ev_8b1cf0ae33" className="text-xs">{getStatusLabel(exp.health_status)}</span>
+                    </div>
+            }
+
+                  {exp.notes && <p data-ev-id="ev_2e93c2fb84" className="mt-2 text-xs text-muted-foreground">{exp.notes}</p>}
                 </div>
-                <p data-ev-id="ev_b5c3764f3c" className="mt-2 text-xs text-muted-foreground">
-                  {analysis.pixelCount.toLocaleString()} píxeles analizados
-                </p>
-              </div>
-
-              {/* Métricas de área */}
-              <div data-ev-id="ev_3a148a2bcb" className="rounded-2xl border border-border bg-card p-4">
-                <h3 data-ev-id="ev_46fb59f6b4" className="mb-3 flex items-center gap-2 text-sm font-medium">
-                  <Leaf className="h-4 w-4" /> Métricas de área
-                </h3>
-                <div data-ev-id="ev_14b4250c69" className="grid grid-cols-2 gap-3">
-                  <MetricBar label="Área verde" value={analysis.healthMetrics.greenArea} color="bg-green-500" />
-                  <MetricBar label="Área saludable" value={analysis.healthMetrics.healthyArea} color="bg-emerald-500" />
-                  <MetricBar label="Área clorótica" value={analysis.healthMetrics.chloroticArea} color="bg-yellow-500" />
-                  <MetricBar label="Área necrótica" value={analysis.healthMetrics.necroticArea} color="bg-red-500" />
-                </div>
-              </div>
-
-              {/* Estadísticas LAB */}
-              <div data-ev-id="ev_6679692079" className="rounded-2xl border border-border bg-card p-4">
-                <h3 data-ev-id="ev_ae40c6eaf3" className="mb-3 flex items-center gap-2 text-sm font-medium">
-                  <BarChart3 className="h-4 w-4" /> Estadísticas CIELAB
-                </h3>
-                <div data-ev-id="ev_733ed99ecb" className="flex flex-col gap-4">
-                  <ChannelStats label="L*" info="Luminosidad" stats={analysis.labStats.l} color="bg-gray-400" />
-                  <ChannelStats label="a*" info="Verde(-) / Rojo(+)" stats={analysis.labStats.a} color="bg-green-500" />
-                  <ChannelStats label="b*" info="Azul(-) / Amarillo(+)" stats={analysis.labStats.b} color="bg-yellow-500" />
-                </div>
-              </div>
-
-              {/* Histogramas simplificados */}
-              <div data-ev-id="ev_a919a54b97" className="rounded-2xl border border-border bg-card p-4">
-                <h3 data-ev-id="ev_10e23a0fd6" className="mb-3 flex items-center gap-2 text-sm font-medium">
-                  <Activity className="h-4 w-4" /> Distribución de valores
-                </h3>
-                <div data-ev-id="ev_a45a68964e" className="flex flex-col gap-4">
-                  <MiniHistogram label="L*" data={analysis.histograms.l} color="#888" />
-                  <MiniHistogram label="a*" data={analysis.histograms.a} color="#22c55e" />
-                  <MiniHistogram label="b*" data={analysis.histograms.b} color="#eab308" />
-                </div>
-              </div>
-
-              {/* Exportar */}
-              <button data-ev-id="ev_4f8e930af0"
-            onClick={exportAnalysis}
-            className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium hover:bg-muted">
-
-                <Download className="h-4 w-4" /> Exportar reporte
-              </button>
-            </>
-          }
-
-          {/* Guía CIELAB */}
-          <div data-ev-id="ev_48c693ae29" className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
-            <h4 data-ev-id="ev_8602675df0" className="flex items-center gap-2 font-medium text-blue-800 dark:text-blue-300">
-              <Info className="h-4 w-4" /> Guía CIELAB
-            </h4>
-            <div data-ev-id="ev_10f982ca14" className="mt-2 flex flex-col gap-2 text-xs text-blue-700 dark:text-blue-400">
-              <p data-ev-id="ev_6fb84d4aea"><strong data-ev-id="ev_537be75d45">L*</strong>: Luminosidad (0-100). Valores altos = mayor vigor.</p>
-              <p data-ev-id="ev_dec2c087a2"><strong data-ev-id="ev_bcc4b0afbc">a*</strong>: Valores negativos = más clorofila (verde sano). Positivos = estrés.</p>
-              <p data-ev-id="ev_da3d0a546f"><strong data-ev-id="ev_bdc6c08d80">b*</strong>: Valores altos positivos = amarillamiento (clorosis, senescencia).</p>
+          )}
             </div>
-          </div>
+        }
         </div>
-      </div>
+      }
     </LayoutV2>);
 
 }
 
 function MetricBar({ label, value, color }: {label: string;value: number;color: string;}) {
   return (
-    <div data-ev-id="ev_d8d08d43b6">
-      <div data-ev-id="ev_9760c14490" className="mb-1 flex justify-between text-xs">
-        <span data-ev-id="ev_263347b560">{label}</span>
-        <span data-ev-id="ev_fe1f291b68" className="font-medium">{value}%</span>
+    <div data-ev-id="ev_0660f4563c">
+      <div data-ev-id="ev_c09b166df3" className="mb-1 flex justify-between text-xs">
+        <span data-ev-id="ev_48db45fa7f">{label}</span>
+        <span data-ev-id="ev_5e54b87c80" className="font-medium">{value}%</span>
       </div>
-      <div data-ev-id="ev_204a119e40" className="h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div data-ev-id="ev_12580f4e28" className={`h-full ${color}`} style={{ width: `${Math.min(100, value)}%` }} />
-      </div>
-    </div>);
-
-}
-
-function ChannelStats({
-  label,
-  info,
-  stats,
-  color
-
-
-
-
-
-}: {label: string;info: string;stats: {min: number;max: number;mean: number;stdDev: number;};color: string;}) {
-  return (
-    <div data-ev-id="ev_86dff83df3">
-      <div data-ev-id="ev_fc77a1bdd5" className="mb-1 flex items-center gap-2">
-        <div data-ev-id="ev_cad64f53d3" className={`h-3 w-3 rounded ${color}`} />
-        <span data-ev-id="ev_85bf168b8f" className="text-sm font-medium">{label}</span>
-        <span data-ev-id="ev_6fd393aac8" className="text-xs text-muted-foreground">({info})</span>
-      </div>
-      <div data-ev-id="ev_76a4359cde" className="grid grid-cols-4 gap-2 text-xs">
-        <div data-ev-id="ev_cc8c9a3c61" className="rounded bg-muted p-1.5 text-center">
-          <div data-ev-id="ev_150c98a440" className="text-muted-foreground">Mín</div>
-          <div data-ev-id="ev_1333a3dd2e" className="font-medium">{stats.min}</div>
-        </div>
-        <div data-ev-id="ev_cd5507821d" className="rounded bg-muted p-1.5 text-center">
-          <div data-ev-id="ev_a4930fea81" className="text-muted-foreground">Máx</div>
-          <div data-ev-id="ev_fecbddaf45" className="font-medium">{stats.max}</div>
-        </div>
-        <div data-ev-id="ev_950750b9f9" className="rounded bg-muted p-1.5 text-center">
-          <div data-ev-id="ev_583a3c71ea" className="text-muted-foreground">Media</div>
-          <div data-ev-id="ev_8c694716cd" className="font-medium">{stats.mean}</div>
-        </div>
-        <div data-ev-id="ev_36d5693396" className="rounded bg-muted p-1.5 text-center">
-          <div data-ev-id="ev_e083767a21" className="text-muted-foreground">σ</div>
-          <div data-ev-id="ev_9c5d520dbf" className="font-medium">{stats.stdDev}</div>
-        </div>
-      </div>
-    </div>);
-
-}
-
-function MiniHistogram({ label, data, color }: {label: string;data: number[];color: string;}) {
-  // Reducir a 32 bins para visualización
-  const bins = 32;
-  const binSize = Math.ceil(data.length / bins);
-  const reduced: number[] = [];
-
-  for (let i = 0; i < bins; i++) {
-    let sum = 0;
-    for (let j = i * binSize; j < Math.min((i + 1) * binSize, data.length); j++) {
-      sum += data[j];
-    }
-    reduced.push(sum);
-  }
-
-  const max = Math.max(...reduced, 1);
-
-  return (
-    <div data-ev-id="ev_6e49aa2d55">
-      <div data-ev-id="ev_5fcf59e537" className="mb-1 text-xs font-medium">{label}</div>
-      <div data-ev-id="ev_ef6cd92da6" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
-        {reduced.map((v, i) =>
-        <div data-ev-id="ev_baf29d7595"
-        key={i}
-        className="flex-1 rounded-t"
-        style={{
-          height: `${v / max * 100}%`,
-          backgroundColor: color,
-          minHeight: v > 0 ? '2px' : '0'
-        }} />
-
-        )}
+      <div data-ev-id="ev_89c132453d" className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div data-ev-id="ev_18f51234e6" className={`h-full ${color}`} style={{ width: `${Math.min(100, value)}%` }} />
       </div>
     </div>);
 

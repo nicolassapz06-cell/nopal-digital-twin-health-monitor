@@ -1,17 +1,17 @@
 {
-  "summary": "Crear pestaña Experimentación con análisis CIELAB del modelo 3D",
+  "summary": "Fase 1: Sistema de experimentos de crecimiento",
   "todos": [
     {
       "id": 1,
-      "description": "Crear librería CIELAB (conversión RGB→XYZ→LAB, métricas)",
+      "description": "Migración DB: tabla growth_experiments con RLS",
       "files": [
-        "src/lib/cielab.ts"
+        "supabase/migrations"
       ],
       "status": "complete"
     },
     {
       "id": 2,
-      "description": "Crear página Experimentación con visor 3D y análisis",
+      "description": "Formulario de captura de experimentos en Experimentación",
       "files": [
         "src/pages/Experimentation.tsx"
       ],
@@ -19,14 +19,13 @@
     },
     {
       "id": 3,
-      "description": "Actualizar navegación y rutas",
+      "description": "Historial y visualización de experimentos",
       "files": [
-        "src/components/LayoutV2.tsx",
-        "src/App.tsx"
+        "src/pages/Experimentation.tsx"
       ],
       "status": "complete"
     }
   ],
-  "createdAt": "2026-10-21T17:10:58.844Z",
-  "updatedAt": "2026-10-21T17:14:29.317Z"
+  "createdAt": "2026-10-21T18:27:55.096Z",
+  "updatedAt": "2026-10-21T18:32:42.264Z"
 }

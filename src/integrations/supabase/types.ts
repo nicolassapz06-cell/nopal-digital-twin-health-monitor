@@ -188,6 +188,110 @@ export type Database = {
           },
         ]
       }
+      growth_experiments: {
+        Row: {
+          cladode_change: number | null
+          color_change: string | null
+          condition_label: string | null
+          created_at: string
+          description: string | null
+          duration_days: number | null
+          end_date: string | null
+          final_cladode_count: number | null
+          final_height_cm: number | null
+          final_sprouts: number | null
+          health_status: string | null
+          height_change_cm: number | null
+          humidity_percent: number | null
+          id: string
+          initial_cladode_count: number | null
+          initial_height_cm: number | null
+          initial_sprouts: number | null
+          irrigation_frequency_days: number | null
+          is_control: boolean | null
+          light_intensity_lux: number | null
+          name: string
+          new_sprouts: number | null
+          notes: string | null
+          plant_id: string
+          soil_ph: number | null
+          start_date: string
+          temperature_c: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cladode_change?: number | null
+          color_change?: string | null
+          condition_label?: string | null
+          created_at?: string
+          description?: string | null
+          duration_days?: number | null
+          end_date?: string | null
+          final_cladode_count?: number | null
+          final_height_cm?: number | null
+          final_sprouts?: number | null
+          health_status?: string | null
+          height_change_cm?: number | null
+          humidity_percent?: number | null
+          id?: string
+          initial_cladode_count?: number | null
+          initial_height_cm?: number | null
+          initial_sprouts?: number | null
+          irrigation_frequency_days?: number | null
+          is_control?: boolean | null
+          light_intensity_lux?: number | null
+          name: string
+          new_sprouts?: number | null
+          notes?: string | null
+          plant_id: string
+          soil_ph?: number | null
+          start_date?: string
+          temperature_c?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cladode_change?: number | null
+          color_change?: string | null
+          condition_label?: string | null
+          created_at?: string
+          description?: string | null
+          duration_days?: number | null
+          end_date?: string | null
+          final_cladode_count?: number | null
+          final_height_cm?: number | null
+          final_sprouts?: number | null
+          health_status?: string | null
+          height_change_cm?: number | null
+          humidity_percent?: number | null
+          id?: string
+          initial_cladode_count?: number | null
+          initial_height_cm?: number | null
+          initial_sprouts?: number | null
+          irrigation_frequency_days?: number | null
+          is_control?: boolean | null
+          light_intensity_lux?: number | null
+          name?: string
+          new_sprouts?: number | null
+          notes?: string | null
+          plant_id?: string
+          soil_ph?: number | null
+          start_date?: string
+          temperature_c?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_experiments_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       growth_predictions: {
         Row: {
           algorithm: string | null

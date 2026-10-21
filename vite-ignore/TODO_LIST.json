@@ -1,25 +1,25 @@
 {
-  "summary": "Sistema predictivo de crecimiento con simulador interactivo",
+  "summary": "Fase 4: Visualizaci\\u00f3n de brotes simulados en modelo 3D",
   "todos": [
     {
       "id": 1,
-      "description": "Motor predictivo con datos experimentales (predictions.ts)",
+      "description": "Agregar estados y lógica para brotes simulados",
       "files": [],
       "status": "complete"
     },
     {
       "id": 2,
-      "description": "Tab Simulador con sliders y visualización",
+      "description": "Agregar visor 3D con overlay de brotes en Simulador",
       "files": [],
       "status": "complete"
     },
     {
       "id": 3,
-      "description": "Validar y verificar funcionamiento",
+      "description": "Validar funcionamiento",
       "files": [],
       "status": "complete"
     }
   ],
-  "createdAt": "2026-10-21T18:37:24.799Z",
-  "updatedAt": "2026-10-21T18:42:00.276Z"
+  "createdAt": "2026-10-21T18:45:55.883Z",
+  "updatedAt": "2026-10-21T18:48:03.245Z"
 }

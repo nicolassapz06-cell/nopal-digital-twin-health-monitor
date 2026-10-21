@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain } from 'lucide-react';
+import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain, Sprout, Eye } from 'lucide-react';
 import { LayoutV2 } from '@/components/LayoutV2';
 import { useAuth } from '@/contexts/auth-context';
 import { supabase } from '@/integrations/supabase/client';
@@ -59,6 +59,9 @@ export default function Experimentation() {
   });
   const [simDays, setSimDays] = useState(30);
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
+  const [showSprouts3D, setShowSprouts3D] = useState(false);
+  const [simModelLoaded, setSimModelLoaded] = useState(false);
+  const [sproutPositions, setSproutPositions] = useState<{x: number; y: number; size: number; delay: number}[]>([]);
 
   const [expForm, setExpForm] = useState({
     name: '',
@@ -82,6 +85,7 @@ export default function Experimentation() {
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const simViewerRef = useRef<HTMLDivElement>(null);
 
   // Cargar plantas y experimentos
   const loadData = useCallback(async () => {
@@ -361,6 +365,81 @@ export default function Experimentation() {
       setSimResult(result);
     }
   }, [simConditions, simDays, selectedPlant, activeTab, plantExperiments]);
+
+  // Generar posiciones de brotes cuando cambie la predicción
+  useEffect(() => {
+    if (simResult && simResult.sprouts > 0) {
+      const positions: {x: number; y: number; size: number; delay: number}[] = [];
+      const sproutCount = Math.min(simResult.sprouts, 12); // Máximo 12 brotes visibles
+      
+      for (let i = 0; i < sproutCount; i++) {
+        // Posiciones distribuidas en zonas típicas donde brotan los nopales
+        // Principalmente en los bordes superiores y laterales de las pencas
+        const zone = i % 4; // 4 zonas diferentes
+        let x: number, y: number;
+        
+        switch (zone) {
+          case 0: // Borde superior
+            x = 30 + Math.random() * 40;
+            y = 15 + Math.random() * 15;
+            break;
+          case 1: // Lado derecho
+            x = 65 + Math.random() * 20;
+            y = 25 + Math.random() * 30;
+            break;
+          case 2: // Lado izquierdo
+            x = 15 + Math.random() * 20;
+            y = 25 + Math.random() * 30;
+            break;
+          default: // Parte media-superior
+            x = 35 + Math.random() * 30;
+            y = 30 + Math.random() * 20;
+        }
+        
+        positions.push({
+          x,
+          y,
+          size: 8 + Math.random() * 8, // Tamaño variable
+          delay: i * 0.15, // Animación escalonada
+        });
+      }
+      
+      setSproutPositions(positions);
+    } else {
+      setSproutPositions([]);
+    }
+  }, [simResult]);
+
+  // Crear visor 3D para simulador
+  useEffect(() => {
+    const container = simViewerRef.current;
+    if (!container || !modelUrl || !showSprouts3D) return;
+
+    container.innerHTML = '';
+    const viewer = document.createElement('model-viewer');
+    viewer.id = 'sim-3d-viewer';
+    viewer.setAttribute('src', modelUrl);
+    viewer.setAttribute('alt', 'Modelo 3D con brotes simulados');
+    viewer.setAttribute('auto-rotate', '');
+    viewer.setAttribute('camera-controls', '');
+    viewer.setAttribute('camera-orbit', '0deg 75deg 105%');
+    viewer.setAttribute('exposure', '1.0');
+    viewer.setAttribute('shadow-intensity', '0');
+    viewer.setAttribute('environment-image', 'neutral');
+    viewer.setAttribute('tone-mapping', 'neutral');
+    viewer.style.width = '100%';
+    viewer.style.height = '100%';
+    viewer.style.backgroundColor = '#1a1a2e';
+
+    viewer.addEventListener('load', () => setSimModelLoaded(true));
+
+    container.appendChild(viewer);
+
+    return () => {
+      container.innerHTML = '';
+      setSimModelLoaded(false);
+    };
+  }, [modelUrl, showSprouts3D]);
 
   const getConditionIcon = (status: string) => {
     switch (status) {
@@ -1029,6 +1108,114 @@ export default function Experimentation() {
                   }`}>
                     Confianza: {simResult.confidence}%
                   </span>
+                </div>
+
+                {/* Visor 3D con Brotes Simulados */}
+                <div data-ev-id="ev_sim_3d_section" className="rounded-2xl border border-border bg-card overflow-hidden">
+                  <div data-ev-id="ev_sim_3d_header" className="flex items-center justify-between border-b border-border p-3">
+                    <div data-ev-id="ev_sim_3d_title" className="flex items-center gap-2">
+                      <Sprout className="h-4 w-4 text-emerald-500" />
+                      <span data-ev-id="ev_sim_3d_label" className="text-sm font-medium">Vista 3D con Brotes</span>
+                      {simResult.sprouts > 0 && (
+                        <span data-ev-id="ev_sim_3d_count" className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                          +{simResult.sprouts} brotes
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      data-ev-id="ev_sim_3d_toggle"
+                      onClick={() => setShowSprouts3D(!showSprouts3D)}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                        showSprouts3D ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+                      }`}
+                    >
+                      <Eye className="h-4 w-4" />
+                      {showSprouts3D ? 'Ocultar' : 'Visualizar'}
+                    </button>
+                  </div>
+
+                  {showSprouts3D && (
+                    <div data-ev-id="ev_sim_3d_viewer_container" className="relative h-72">
+                      <div data-ev-id="ev_sim_3d_viewer" ref={simViewerRef} className="h-full w-full" />
+                      
+                      {/* Overlay de brotes */}
+                      {simModelLoaded && sproutPositions.length > 0 && (
+                        <div data-ev-id="ev_sim_sprouts_overlay" className="pointer-events-none absolute inset-0">
+                          {sproutPositions.map((sprout, idx) => (
+                            <div
+                              key={idx}
+                              data-ev-id="ev_sim_sprout"
+                              className="absolute animate-sprout"
+                              style={{
+                                left: `${sprout.x}%`,
+                                top: `${sprout.y}%`,
+                                animationDelay: `${sprout.delay}s`,
+                              }}
+                            >
+                              <div
+                                data-ev-id="ev_sim_sprout_inner"
+                                className="relative flex items-center justify-center"
+                                style={{ width: sprout.size * 2, height: sprout.size * 2 }}
+                              >
+                                {/* Glow effect */}
+                                <div
+                                  data-ev-id="ev_sim_sprout_glow"
+                                  className="absolute rounded-full bg-emerald-400/30 blur-sm"
+                                  style={{ width: sprout.size * 2.5, height: sprout.size * 2.5 }}
+                                />
+                                {/* Sprout icon */}
+                                <div
+                                  data-ev-id="ev_sim_sprout_icon"
+                                  className="relative rounded-full bg-emerald-500 shadow-lg"
+                                  style={{ width: sprout.size, height: sprout.size }}
+                                >
+                                  <Sprout
+                                    className="absolute text-white"
+                                    style={{
+                                      width: sprout.size * 0.7,
+                                      height: sprout.size * 0.7,
+                                      top: '50%',
+                                      left: '50%',
+                                      transform: 'translate(-50%, -50%)',
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Loading overlay */}
+                      {!simModelLoaded && (
+                        <div data-ev-id="ev_sim_3d_loading" className="absolute inset-0 flex items-center justify-center bg-black/50">
+                          <div data-ev-id="ev_sim_3d_loading_content" className="flex flex-col items-center gap-2 text-white">
+                            <Loader2 className="h-8 w-8 animate-spin" />
+                            <span data-ev-id="ev_sim_3d_loading_text" className="text-sm">Cargando modelo...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!showSprouts3D && (
+                    <div data-ev-id="ev_sim_3d_preview" className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+                      <div data-ev-id="ev_sim_3d_preview_icon" className="relative">
+                        <Leaf className="h-12 w-12 text-muted-foreground" />
+                        {simResult.sprouts > 0 && (
+                          <div data-ev-id="ev_sim_3d_preview_badge" className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
+                            +{Math.min(simResult.sprouts, 9)}{simResult.sprouts > 9 ? '+' : ''}
+                          </div>
+                        )}
+                      </div>
+                      <p data-ev-id="ev_sim_3d_preview_text" className="text-sm text-muted-foreground">
+                        {simResult.sprouts > 0
+                          ? `Visualiza ${simResult.sprouts} brote${simResult.sprouts > 1 ? 's' : ''} simulado${simResult.sprouts > 1 ? 's' : ''} en el modelo 3D`
+                          : 'No se predicen brotes nuevos con estas condiciones'
+                        }
+                      </p>
+                    </div>
+                  )}
                 </div>
               </>
               }

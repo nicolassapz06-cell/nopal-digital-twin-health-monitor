@@ -11,3 +11,28 @@
   animation: spin-slow 12s linear infinite;
 }
 
+/* Animación de brotes para simulador de crecimiento */
+@keyframes sprout-grow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@keyframes sprout-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px 4px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.animate-sprout {
+  animation: sprout-grow 2s ease-in-out infinite, sprout-glow 2s ease-in-out infinite;
+}
+

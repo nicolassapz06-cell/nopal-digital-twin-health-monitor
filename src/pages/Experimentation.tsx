@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2 } from 'lucide-react';
+import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain } from 'lucide-react';
 import { LayoutV2 } from '@/components/LayoutV2';
 import { useAuth } from '@/contexts/auth-context';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,11 +13,18 @@ import {
   CHANNEL_INFO,
   type ImageAnalysis } from
 '@/lib/cielab';
+import {
+  simulateGrowth,
+  evaluateConditions,
+  calculateGrowthRates,
+  type SimulationConditions,
+  type SimulationResult
+} from '@/lib/predictions';
 
 type Plant = Tables<'plants'>;
 type GrowthExperiment = Tables<'growth_experiments'>;
 
-type TabType = 'cielab' | 'experiments';
+type TabType = 'cielab' | 'experiments' | 'simulator';
 
 const INPUT = 'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30';
 
@@ -41,6 +48,18 @@ export default function Experimentation() {
   const [experiments, setExperiments] = useState<GrowthExperiment[]>([]);
   const [showExpForm, setShowExpForm] = useState(false);
   const [savingExp, setSavingExp] = useState(false);
+
+  // Simulador
+  const [simConditions, setSimConditions] = useState<SimulationConditions>({
+    temperature_c: 23,
+    humidity_percent: 45,
+    soil_ph: 6.8,
+    light_intensity_lux: 30000,
+    irrigation_frequency_days: 7,
+  });
+  const [simDays, setSimDays] = useState(30);
+  const [simResult, setSimResult] = useState<SimulationResult | null>(null);
+
   const [expForm, setExpForm] = useState({
     name: '',
     condition_label: '',
@@ -320,6 +339,44 @@ export default function Experimentation() {
 
   const plantExperiments = experiments.filter((e) => e.plant_id === selectedPlant?.id);
 
+
+
+  // Auto-simular cuando cambian condiciones
+  useEffect(() => {
+    if (activeTab === 'simulator' && selectedPlant) {
+      // Obtener estado inicial desde lecturas o valores por defecto
+      const initialState = {
+        height: 25,
+        sprouts: 0,
+        cladodes: 3,
+      };
+
+      const result = simulateGrowth(
+        plantExperiments,
+        simConditions,
+        simDays,
+        initialState
+      );
+
+      setSimResult(result);
+    }
+  }, [simConditions, simDays, selectedPlant, activeTab, plantExperiments]);
+
+  const getConditionIcon = (status: string) => {
+    switch (status) {
+      case 'optimal': return { color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900/30', label: 'Óptimo' };
+      case 'stress_cold': return { color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30', label: 'Frío' };
+      case 'stress_heat': return { color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-900/30', label: 'Calor' };
+      case 'low': return { color: 'text-yellow-500', bg: 'bg-yellow-100 dark:bg-yellow-900/30', label: 'Bajo' };
+      case 'high': return { color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30', label: 'Alto' };
+      case 'acidic': return { color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30', label: 'Ácido' };
+      case 'alkaline': return { color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-900/30', label: 'Alcalino' };
+      case 'deficit': return { color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-900/30', label: 'Déficit' };
+      case 'excess': return { color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30', label: 'Exceso' };
+      default: return { color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-900/30', label: status };
+    }
+  };
+
   if (loading) {
     return (
       <LayoutV2>
@@ -389,6 +446,14 @@ export default function Experimentation() {
           {plantExperiments.length > 0 &&
           <span data-ev-id="ev_1f225bd310" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs">{plantExperiments.length}</span>
           }
+        </button>
+        <button data-ev-id="ev_sim_tab"
+        onClick={() => setActiveTab('simulator')}
+        className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+        activeTab === 'simulator' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
+        }>
+
+          <Zap className="h-4 w-4" /> Simulador
         </button>
       </div>
 
@@ -699,6 +764,276 @@ export default function Experimentation() {
           )}
             </div>
         }
+        </div>
+      }
+
+      {/* Tab: Simulador */}
+      {activeTab === 'simulator' &&
+      <div data-ev-id="ev_sim_content" className="flex flex-col gap-6">
+          {/* Header */}
+          <div data-ev-id="ev_sim_header" className="flex flex-col gap-2">
+            <h2 data-ev-id="ev_sim_title" className="flex items-center gap-2 text-lg font-semibold">
+              <Zap className="h-5 w-5 text-primary" />
+              Simulador de Crecimiento
+            </h2>
+            <p data-ev-id="ev_sim_desc" className="text-sm text-muted-foreground">
+              Predice el crecimiento de {selectedPlant?.name} bajo diferentes condiciones ambientales.
+              {plantExperiments.length > 0 
+                ? ` Basado en ${plantExperiments.length} experimento(s) registrado(s).`
+                : ' Usa valores de referencia para Opuntia (registra experimentos para mejorar precisión).'
+              }
+            </p>
+          </div>
+
+          <div data-ev-id="ev_sim_grid" className="grid gap-6 lg:grid-cols-3">
+            {/* Panel de condiciones */}
+            <div data-ev-id="ev_sim_conditions" className="lg:col-span-1 flex flex-col gap-4">
+              <div data-ev-id="ev_sim_cond_card" className="rounded-2xl border border-border bg-card p-4">
+                <h3 data-ev-id="ev_sim_cond_title" className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <Activity className="h-4 w-4" /> Condiciones Ambientales
+                </h3>
+
+                {/* Temperatura */}
+                <div data-ev-id="ev_sim_temp" className="mb-4">
+                  <label data-ev-id="ev_sim_temp_label" className="flex items-center justify-between text-sm">
+                    <span data-ev-id="ev_sim_temp_icon" className="flex items-center gap-2">
+                      <Thermometer className="h-4 w-4 text-red-500" /> Temperatura
+                    </span>
+                    <span data-ev-id="ev_sim_temp_value" className="font-medium">{simConditions.temperature_c}°C</span>
+                  </label>
+                  <input data-ev-id="ev_sim_temp_slider"
+                    type="range" min="5" max="45" step="1"
+                    value={simConditions.temperature_c}
+                    onChange={(e) => setSimConditions({ ...simConditions, temperature_c: Number(e.target.value) })}
+                    className="mt-2 w-full accent-primary"
+                  />
+                  <div data-ev-id="ev_sim_temp_range" className="flex justify-between text-xs text-muted-foreground">
+                    <span data-ev-id="ev_sim_temp_min">5°C</span><span data-ev-id="ev_sim_temp_opt">Óptimo: 18-28°C</span><span data-ev-id="ev_sim_temp_max">45°C</span>
+                  </div>
+                </div>
+
+                {/* Humedad */}
+                <div data-ev-id="ev_sim_hum" className="mb-4">
+                  <label data-ev-id="ev_sim_hum_label" className="flex items-center justify-between text-sm">
+                    <span data-ev-id="ev_sim_hum_icon" className="flex items-center gap-2">
+                      <Droplets className="h-4 w-4 text-blue-500" /> Humedad
+                    </span>
+                    <span data-ev-id="ev_sim_hum_value" className="font-medium">{simConditions.humidity_percent}%</span>
+                  </label>
+                  <input data-ev-id="ev_sim_hum_slider"
+                    type="range" min="10" max="90" step="1"
+                    value={simConditions.humidity_percent}
+                    onChange={(e) => setSimConditions({ ...simConditions, humidity_percent: Number(e.target.value) })}
+                    className="mt-2 w-full accent-primary"
+                  />
+                  <div data-ev-id="ev_sim_hum_range" className="flex justify-between text-xs text-muted-foreground">
+                    <span data-ev-id="ev_sim_hum_min">10%</span><span data-ev-id="ev_sim_hum_opt">Óptimo: 30-60%</span><span data-ev-id="ev_sim_hum_max">90%</span>
+                  </div>
+                </div>
+
+                {/* pH */}
+                <div data-ev-id="ev_sim_ph" className="mb-4">
+                  <label data-ev-id="ev_sim_ph_label" className="flex items-center justify-between text-sm">
+                    <span data-ev-id="ev_sim_ph_icon" className="flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4 text-purple-500" /> pH del Suelo
+                    </span>
+                    <span data-ev-id="ev_sim_ph_value" className="font-medium">{simConditions.soil_ph}</span>
+                  </label>
+                  <input data-ev-id="ev_sim_ph_slider"
+                    type="range" min="4" max="9" step="0.1"
+                    value={simConditions.soil_ph}
+                    onChange={(e) => setSimConditions({ ...simConditions, soil_ph: Number(e.target.value) })}
+                    className="mt-2 w-full accent-primary"
+                  />
+                  <div data-ev-id="ev_sim_ph_range" className="flex justify-between text-xs text-muted-foreground">
+                    <span data-ev-id="ev_sim_ph_min">4.0</span><span data-ev-id="ev_sim_ph_opt">Óptimo: 6.0-7.5</span><span data-ev-id="ev_sim_ph_max">9.0</span>
+                  </div>
+                </div>
+
+                {/* Luz */}
+                <div data-ev-id="ev_sim_light" className="mb-4">
+                  <label data-ev-id="ev_sim_light_label" className="flex items-center justify-between text-sm">
+                    <span data-ev-id="ev_sim_light_icon" className="flex items-center gap-2">
+                      <Sun className="h-4 w-4 text-yellow-500" /> Luz
+                    </span>
+                    <span data-ev-id="ev_sim_light_value" className="font-medium">{(simConditions.light_intensity_lux / 1000).toFixed(0)}k lux</span>
+                  </label>
+                  <input data-ev-id="ev_sim_light_slider"
+                    type="range" min="1000" max="80000" step="1000"
+                    value={simConditions.light_intensity_lux}
+                    onChange={(e) => setSimConditions({ ...simConditions, light_intensity_lux: Number(e.target.value) })}
+                    className="mt-2 w-full accent-primary"
+                  />
+                  <div data-ev-id="ev_sim_light_range" className="flex justify-between text-xs text-muted-foreground">
+                    <span data-ev-id="ev_sim_light_min">1k</span><span data-ev-id="ev_sim_light_opt">Óptimo: 10-50k lux</span><span data-ev-id="ev_sim_light_max">80k</span>
+                  </div>
+                </div>
+
+                {/* Riego */}
+                <div data-ev-id="ev_sim_irrig">
+                  <label data-ev-id="ev_sim_irrig_label" className="flex items-center justify-between text-sm">
+                    <span data-ev-id="ev_sim_irrig_icon" className="flex items-center gap-2">
+                      <CloudRain className="h-4 w-4 text-cyan-500" /> Frecuencia de Riego
+                    </span>
+                    <span data-ev-id="ev_sim_irrig_value" className="font-medium">cada {simConditions.irrigation_frequency_days} días</span>
+                  </label>
+                  <input data-ev-id="ev_sim_irrig_slider"
+                    type="range" min="1" max="21" step="1"
+                    value={simConditions.irrigation_frequency_days}
+                    onChange={(e) => setSimConditions({ ...simConditions, irrigation_frequency_days: Number(e.target.value) })}
+                    className="mt-2 w-full accent-primary"
+                  />
+                  <div data-ev-id="ev_sim_irrig_range" className="flex justify-between text-xs text-muted-foreground">
+                    <span data-ev-id="ev_sim_irrig_min">Diario</span><span data-ev-id="ev_sim_irrig_opt">Óptimo: 5-14 días</span><span data-ev-id="ev_sim_irrig_max">21 días</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Duración */}
+              <div data-ev-id="ev_sim_duration" className="rounded-2xl border border-border bg-card p-4">
+                <h3 data-ev-id="ev_sim_dur_title" className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <Calendar className="h-4 w-4" /> Horizonte de Predicción
+                </h3>
+                <div data-ev-id="ev_sim_dur_btns" className="grid grid-cols-4 gap-2">
+                  {[7, 14, 30, 60].map((d) =>
+                    <button data-ev-id="ev_sim_dur_btn"
+                      key={d}
+                      onClick={() => setSimDays(d)}
+                      className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                        simDays === d ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+                      }`}
+                    >
+                      {d}d
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Resultados */}
+            <div data-ev-id="ev_sim_results" className="lg:col-span-2 flex flex-col gap-4">
+              {simResult &&
+              <>
+                {/* Estado de condiciones */}
+                <div data-ev-id="ev_sim_status" className="rounded-2xl border border-border bg-card p-4">
+                  <div data-ev-id="ev_sim_status_header" className="mb-4 flex items-center justify-between">
+                    <h3 data-ev-id="ev_sim_status_title" className="text-sm font-medium">Estado de Condiciones</h3>
+                    <div data-ev-id="ev_sim_health_factor" className="flex items-center gap-2">
+                      <span data-ev-id="ev_sim_health_label" className="text-xs text-muted-foreground">Factor de crecimiento:</span>
+                      <span data-ev-id="ev_sim_health_value" className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        simResult.overallHealthFactor >= 0.8 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        simResult.overallHealthFactor >= 0.5 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      }`}>
+                        {Math.round(simResult.overallHealthFactor * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div data-ev-id="ev_sim_conditions_grid" className="grid grid-cols-5 gap-2">
+                    {[
+                      { key: 'temperature', icon: <Thermometer className="h-4 w-4" />, label: 'Temp' },
+                      { key: 'humidity', icon: <Droplets className="h-4 w-4" />, label: 'Humedad' },
+                      { key: 'ph', icon: <FlaskConical className="h-4 w-4" />, label: 'pH' },
+                      { key: 'light', icon: <Sun className="h-4 w-4" />, label: 'Luz' },
+                      { key: 'irrigation', icon: <CloudRain className="h-4 w-4" />, label: 'Riego' },
+                    ].map(({ key, icon, label }) => {
+                      const status = simResult.conditionEffects[key as keyof typeof simResult.conditionEffects];
+                      const style = getConditionIcon(status);
+                      return (
+                        <div data-ev-id="ev_sim_cond_item" key={key} className={`flex flex-col items-center gap-1 rounded-lg p-2 ${style.bg}`}>
+                          <span data-ev-id="ev_sim_cond_icon" className={style.color}>{icon}</span>
+                          <span data-ev-id="ev_sim_cond_name" className="text-xs font-medium">{label}</span>
+                          <span data-ev-id="ev_sim_cond_status" className={`text-xs ${style.color}`}>{style.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Predicciones */}
+                <div data-ev-id="ev_sim_predictions" className="grid gap-4 sm:grid-cols-3">
+                  <div data-ev-id="ev_sim_pred_height" className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <TrendingUp className="mx-auto mb-2 h-8 w-8 text-green-500" />
+                    <p data-ev-id="ev_sim_pred_h_label" className="text-sm text-muted-foreground">Altura en {simDays} días</p>
+                    <p data-ev-id="ev_sim_pred_h_value" className="text-3xl font-bold text-green-600">{simResult.height ?? '--'}</p>
+                    <p data-ev-id="ev_sim_pred_h_unit" className="text-sm text-muted-foreground">cm</p>
+                    <p data-ev-id="ev_sim_pred_h_delta" className="mt-1 text-xs text-green-600">+{((simResult.height ?? 25) - 25).toFixed(1)} cm</p>
+                  </div>
+                  <div data-ev-id="ev_sim_pred_sprouts" className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <Leaf className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
+                    <p data-ev-id="ev_sim_pred_s_label" className="text-sm text-muted-foreground">Brotes nuevos</p>
+                    <p data-ev-id="ev_sim_pred_s_value" className="text-3xl font-bold text-emerald-600">{simResult.sprouts ?? '--'}</p>
+                    <p data-ev-id="ev_sim_pred_s_unit" className="text-sm text-muted-foreground">brotes</p>
+                  </div>
+                  <div data-ev-id="ev_sim_pred_cladodes" className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <Activity className="mx-auto mb-2 h-8 w-8 text-primary" />
+                    <p data-ev-id="ev_sim_pred_c_label" className="text-sm text-muted-foreground">Pencas totales</p>
+                    <p data-ev-id="ev_sim_pred_c_value" className="text-3xl font-bold text-primary">{simResult.cladodes ?? '--'}</p>
+                    <p data-ev-id="ev_sim_pred_c_unit" className="text-sm text-muted-foreground">pencas</p>
+                    <p data-ev-id="ev_sim_pred_c_delta" className="mt-1 text-xs text-primary">+{(simResult.cladodes ?? 3) - 3} nuevas</p>
+                  </div>
+                </div>
+
+                {/* Gráfico de proyección */}
+                <div data-ev-id="ev_sim_chart" className="rounded-2xl border border-border bg-card p-4">
+                  <h3 data-ev-id="ev_sim_chart_title" className="mb-4 text-sm font-medium">Proyección de Crecimiento</h3>
+                  <div data-ev-id="ev_sim_chart_container" className="relative h-48">
+                    <svg data-ev-id="ev_sim_chart_svg" viewBox="0 0 400 160" className="h-full w-full">
+                      {/* Grid */}
+                      {[0, 40, 80, 120, 160].map((y) =>
+                        <line data-ev-id="ev_sim_grid_line" key={y} x1="40" y1={y} x2="390" y2={y} stroke="currentColor" strokeOpacity="0.1" />
+                      )}
+                      {/* Eje Y labels */}
+                      <text data-ev-id="ev_sim_y_max" x="35" y="15" textAnchor="end" className="fill-muted-foreground text-[10px]">
+                        {Math.round((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1)} cm
+                      </text>
+                      <text data-ev-id="ev_sim_y_min" x="35" y="155" textAnchor="end" className="fill-muted-foreground text-[10px]">0</text>
+                      {/* Línea de altura */}
+                      <polyline data-ev-id="ev_sim_line"
+                        fill="none"
+                        stroke="#22c55e"
+                        strokeWidth="2"
+                        points={simResult.dailyGrowth.map((d, i) => {
+                          const x = 40 + (i / simDays) * 350;
+                          const maxH = (simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1;
+                          const y = 155 - (d.height / maxH) * 150;
+                          return `${x},${y}`;
+                        }).join(' ')}
+                      />
+                      {/* Punto final */}
+                      <circle data-ev-id="ev_sim_endpoint"
+                        cx={390}
+                        cy={155 - ((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 25) / ((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1)) * 150}
+                        r="4"
+                        fill="#22c55e"
+                      />
+                      {/* Eje X labels */}
+                      <text data-ev-id="ev_sim_x_start" x="40" y="158" textAnchor="start" className="fill-muted-foreground text-[10px]">Hoy</text>
+                      <text data-ev-id="ev_sim_x_end" x="390" y="158" textAnchor="end" className="fill-muted-foreground text-[10px]">+{simDays}d</text>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Confianza */}
+                <div data-ev-id="ev_sim_confidence" className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+                  <div data-ev-id="ev_sim_conf_info" className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                    <span data-ev-id="ev_sim_conf_text" className="text-sm text-muted-foreground">
+                      Predicción basada en {simResult.source === 'experimental' ? 'tus experimentos' : 'valores de referencia'}
+                    </span>
+                  </div>
+                  <span data-ev-id="ev_sim_conf_value" className={`rounded-full px-3 py-1 text-sm font-medium ${
+                    simResult.confidence >= 70 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    simResult.confidence >= 40 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>
+                    Confianza: {simResult.confidence}%
+                  </span>
+                </div>
+              </>
+              }
+            </div>
+          </div>
         </div>
       }
     </LayoutV2>);

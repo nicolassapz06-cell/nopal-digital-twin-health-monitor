@@ -1,31 +1,25 @@
 {
-  "summary": "Fase 1: Sistema de experimentos de crecimiento",
+  "summary": "Sistema predictivo de crecimiento con simulador interactivo",
   "todos": [
     {
       "id": 1,
-      "description": "Migración DB: tabla growth_experiments con RLS",
-      "files": [
-        "supabase/migrations"
-      ],
+      "description": "Motor predictivo con datos experimentales (predictions.ts)",
+      "files": [],
       "status": "complete"
     },
     {
       "id": 2,
-      "description": "Formulario de captura de experimentos en Experimentación",
-      "files": [
-        "src/pages/Experimentation.tsx"
-      ],
+      "description": "Tab Simulador con sliders y visualización",
+      "files": [],
       "status": "complete"
     },
     {
       "id": 3,
-      "description": "Historial y visualización de experimentos",
-      "files": [
-        "src/pages/Experimentation.tsx"
-      ],
+      "description": "Validar y verificar funcionamiento",
+      "files": [],
       "status": "complete"
     }
   ],
-  "createdAt": "2026-10-21T18:27:55.096Z",
-  "updatedAt": "2026-10-21T18:32:42.264Z"
+  "createdAt": "2026-10-21T18:37:24.799Z",
+  "updatedAt": "2026-10-21T18:42:00.276Z"
 }

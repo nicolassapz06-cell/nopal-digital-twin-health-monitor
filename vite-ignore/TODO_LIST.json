@@ -1,0 +1,32 @@
+{
+  "summary": "Crear pestaña Experimentación con análisis CIELAB del modelo 3D",
+  "todos": [
+    {
+      "id": 1,
+      "description": "Crear librería CIELAB (conversión RGB→XYZ→LAB, métricas)",
+      "files": [
+        "src/lib/cielab.ts"
+      ],
+      "status": "complete"
+    },
+    {
+      "id": 2,
+      "description": "Crear página Experimentación con visor 3D y análisis",
+      "files": [
+        "src/pages/Experimentation.tsx"
+      ],
+      "status": "complete"
+    },
+    {
+      "id": 3,
+      "description": "Actualizar navegación y rutas",
+      "files": [
+        "src/components/LayoutV2.tsx",
+        "src/App.tsx"
+      ],
+      "status": "complete"
+    }
+  ],
+  "createdAt": "2026-10-21T17:10:58.844Z",
+  "updatedAt": "2026-10-21T17:14:29.317Z"
+}

@@ -1,31 +1,47 @@
 {
-  "summary": "Mejorar CIELAB con tablas/histogramas + escala din\\u00e1mica en simulador",
+  "summary": "Implementar sistema tipo ImageJ para análisis CIELAB",
   "todos": [
     {
       "id": 1,
-      "description": "Restaurar tablas y datos LAB completos en CIELAB",
-      "files": [],
+      "description": "Agregar estados, tipos y barra de herramientas ImageJ",
+      "files": [
+        "src/pages/Experimentation.tsx"
+      ],
       "status": "complete"
     },
     {
       "id": 2,
-      "description": "Agregar histogramas visuales LAB",
-      "files": [],
+      "description": "Canvas interactivo para ROI y mediciones",
+      "files": [
+        "src/pages/Experimentation.tsx"
+      ],
       "status": "complete"
     },
     {
       "id": 3,
-      "description": "Implementar escala dinámica del modelo 3D en simulador",
-      "files": [],
+      "description": "Panel de análisis ROI, umbralización y tabla de resultados",
+      "files": [
+        "src/pages/Experimentation.tsx"
+      ],
       "status": "complete"
     },
     {
       "id": 4,
-      "description": "Validar funcionamiento",
-      "files": [],
-      "status": "complete"
+      "description": "Funciones de análisis de ROI en cielab.ts",
+      "files": [
+        "src/lib/cielab.ts"
+      ],
+      "status": "skipped"
+    },
+    {
+      "id": 5,
+      "description": "Estilos CSS para herramientas ImageJ",
+      "files": [
+        "src/custom.css"
+      ],
+      "status": "skipped"
     }
   ],
-  "createdAt": "2026-10-21T18:52:38.712Z",
-  "updatedAt": "2026-10-21T18:54:07.158Z"
+  "createdAt": "2026-10-22T16:14:57.858Z",
+  "updatedAt": "2026-10-22T16:23:21.083Z"
 }

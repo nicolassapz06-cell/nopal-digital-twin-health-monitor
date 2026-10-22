@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain, Sprout, Eye } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain, Sprout, Eye, Square, Circle, Ruler, SlidersHorizontal, Move, Target, Crosshair, Table2, Pipette } from 'lucide-react';
 import { LayoutV2 } from '@/components/LayoutV2';
 import { useAuth } from '@/contexts/auth-context';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +25,54 @@ type Plant = Tables<'plants'>;
 type GrowthExperiment = Tables<'growth_experiments'>;
 
 type TabType = 'cielab' | 'experiments' | 'simulator';
+
+// ImageJ-like tool types
+type ImageJTool = 'select' | 'rect' | 'ellipse' | 'line' | 'point' | 'threshold' | 'adjust';
+
+interface ROI {
+  id: string;
+  type: 'rect' | 'ellipse' | 'line' | 'point';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  x2?: number;
+  y2?: number;
+}
+
+interface ROIMeasurement {
+  id: string;
+  roiId: string;
+  roiType: string;
+  area: number;
+  perimeter: number;
+  meanL: number;
+  meanA: number;
+  meanB: number;
+  stdL: number;
+  stdA: number;
+  stdB: number;
+  minL: number;
+  maxL: number;
+  greenness: number;
+  status: string;
+  timestamp: Date;
+}
+
+interface ThresholdSettings {
+  lMin: number;
+  lMax: number;
+  aMin: number;
+  aMax: number;
+  bMin: number;
+  bMax: number;
+}
+
+interface ImageAdjustments {
+  brightness: number;
+  contrast: number;
+  gamma: number;
+}
 
 const INPUT = 'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30';
 
@@ -87,6 +135,28 @@ export default function Experimentation() {
   const viewerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simViewerRef = useRef<HTMLDivElement>(null);
+  const roiCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  // ImageJ-like states
+  const [activeTool, setActiveTool] = useState<ImageJTool>('select');
+  const [rois, setRois] = useState<ROI[]>([]);
+  const [activeRoi, setActiveRoi] = useState<ROI | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawStart, setDrawStart] = useState<{x: number;y: number;} | null>(null);
+  const [measurements, setMeasurements] = useState<ROIMeasurement[]>([]);
+  const [showMeasurements, setShowMeasurements] = useState(true);
+  const [threshold, setThreshold] = useState<ThresholdSettings>({
+    lMin: 0, lMax: 100,
+    aMin: -128, aMax: 127,
+    bMin: -128, bMax: 127
+  });
+  const [showThresholdOverlay, setShowThresholdOverlay] = useState(false);
+  const [adjustments, setAdjustments] = useState<ImageAdjustments>({
+    brightness: 0, contrast: 0, gamma: 1
+  });
+  const [scale, setScale] = useState<{pxPerCm: number;defined: boolean;}>({ pxPerCm: 1, defined: false });
+  const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
 
   // Cargar plantas y experimentos
   const loadData = useCallback(async () => {
@@ -148,7 +218,7 @@ export default function Experimentation() {
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
-    
+
     const viewer = document.createElement('model-viewer');
     viewer.id = 'experiment-viewer';
     viewer.setAttribute('src', modelUrl);
@@ -166,7 +236,7 @@ export default function Experimentation() {
 
     const handleLoad = () => setModelLoaded(true);
     const handleError = () => setError('Error al cargar el modelo');
-    
+
     viewer.addEventListener('load', handleLoad);
     viewer.addEventListener('error', handleError);
 
@@ -187,7 +257,7 @@ export default function Experimentation() {
     if (!container) return;
     const viewer = container.querySelector('#experiment-viewer');
     if (!viewer) return;
-    
+
     if (rotate) {
       viewer.setAttribute('auto-rotate', '');
     } else {
@@ -234,8 +304,14 @@ export default function Experimentation() {
         ctx.drawImage(img, 0, 0);
 
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setOriginalImageData(imageData);
         const result = analyzeImageData(imageData);
         setAnalysis(result);
+
+        // Reset ROIs when new image is captured
+        setRois([]);
+        setActiveRoi(null);
+        setMeasurements([]);
 
         const channels: Record<string, string> = { original: url };
 
@@ -278,7 +354,327 @@ export default function Experimentation() {
     }
   };
 
-  // Guardar experimento
+  // ============ ImageJ-like Functions ============
+
+  // Analyze pixels within a ROI
+  const analyzeROI = (roi: ROI): ROIMeasurement | null => {
+    if (!originalImageData) return null;
+
+    const { data, width, height } = originalImageData;
+    const pixels: {l: number;a: number;b: number;}[] = [];
+
+    // Collect pixels within ROI
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let inside = false;
+
+        if (roi.type === 'rect' && roi.width && roi.height) {
+          inside = x >= roi.x && x <= roi.x + roi.width &&
+          y >= roi.y && y <= roi.y + roi.height;
+        } else if (roi.type === 'ellipse' && roi.width && roi.height) {
+          const cx = roi.x + roi.width / 2;
+          const cy = roi.y + roi.height / 2;
+          const rx = roi.width / 2;
+          const ry = roi.height / 2;
+          inside = (x - cx) ** 2 / rx ** 2 + (y - cy) ** 2 / ry ** 2 <= 1;
+        } else if (roi.type === 'point') {
+          inside = Math.abs(x - roi.x) <= 2 && Math.abs(y - roi.y) <= 2;
+        } else if (roi.type === 'line' && roi.x2 !== undefined && roi.y2 !== undefined) {
+          const dx = roi.x2 - roi.x;
+          const dy = roi.y2 - roi.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          for (let t = 0; t <= 1; t += 1 / length) {
+            const lx = Math.round(roi.x + dx * t);
+            const ly = Math.round(roi.y + dy * t);
+            if (lx === x && ly === y) inside = true;
+          }
+        }
+
+        if (inside) {
+          const idx = (y * width + x) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+
+          // RGB to LAB conversion
+          let rn = r / 255,gn = g / 255,bn = b / 255;
+          rn = rn > 0.04045 ? ((rn + 0.055) / 1.055) ** 2.4 : rn / 12.92;
+          gn = gn > 0.04045 ? ((gn + 0.055) / 1.055) ** 2.4 : gn / 12.92;
+          bn = bn > 0.04045 ? ((bn + 0.055) / 1.055) ** 2.4 : bn / 12.92;
+
+          const xVal = (rn * 0.4124 + gn * 0.3576 + bn * 0.1805) * 100 / 95.047;
+          const yVal = (rn * 0.2126 + gn * 0.7152 + bn * 0.0722) * 100 / 100;
+          const zVal = (rn * 0.0193 + gn * 0.1192 + bn * 0.9505) * 100 / 108.883;
+
+          const fx = xVal > 0.008856 ? xVal ** (1 / 3) : 7.787 * xVal + 16 / 116;
+          const fy = yVal > 0.008856 ? yVal ** (1 / 3) : 7.787 * yVal + 16 / 116;
+          const fz = zVal > 0.008856 ? zVal ** (1 / 3) : 7.787 * zVal + 16 / 116;
+
+          pixels.push({
+            l: 116 * fy - 16,
+            a: 500 * (fx - fy),
+            b: 200 * (fy - fz)
+          });
+        }
+      }
+    }
+
+    if (pixels.length === 0) return null;
+
+    const lVals = pixels.map((p) => p.l);
+    const aVals = pixels.map((p) => p.a);
+    const bVals = pixels.map((p) => p.b);
+
+    const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const std = (arr: number[], m: number) => Math.sqrt(arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / arr.length);
+    const arrMin = (arr: number[]) => {let m = Infinity;for (const v of arr) if (v < m) m = v;return m;};
+    const arrMax = (arr: number[]) => {let m = -Infinity;for (const v of arr) if (v > m) m = v;return m;};
+
+    const meanL = mean(lVals);
+    const meanA = mean(aVals);
+    const meanB = mean(bVals);
+
+    let area = pixels.length;
+    let perimeter = 0;
+
+    if (roi.type === 'rect' && roi.width && roi.height) {
+      perimeter = 2 * (roi.width + roi.height);
+    } else if (roi.type === 'ellipse' && roi.width && roi.height) {
+      const a = roi.width / 2,b = roi.height / 2;
+      perimeter = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
+    } else if (roi.type === 'line' && roi.x2 !== undefined && roi.y2 !== undefined) {
+      perimeter = Math.sqrt((roi.x2 - roi.x) ** 2 + (roi.y2 - roi.y) ** 2);
+      area = perimeter;
+    }
+
+    const areaInCm = scale.defined ? area / scale.pxPerCm ** 2 : area;
+    const perimeterInCm = scale.defined ? perimeter / scale.pxPerCm : perimeter;
+
+    const greenness = Math.max(0, Math.min(100, 50 - meanA));
+    let status = 'Saludable';
+    if (meanA > 5 || meanB > 40) status = 'Estrés';else
+    if (meanA > 0 || meanB > 25) status = 'Moderado';else
+    if (meanL < 25) status = 'Necrótico';
+
+    return {
+      id: `m-${Date.now()}`,
+      roiId: roi.id,
+      roiType: roi.type,
+      area: Math.round(areaInCm * 100) / 100,
+      perimeter: Math.round(perimeterInCm * 100) / 100,
+      meanL: Math.round(meanL * 100) / 100,
+      meanA: Math.round(meanA * 100) / 100,
+      meanB: Math.round(meanB * 100) / 100,
+      stdL: Math.round(std(lVals, meanL) * 100) / 100,
+      stdA: Math.round(std(aVals, meanA) * 100) / 100,
+      stdB: Math.round(std(bVals, meanB) * 100) / 100,
+      minL: Math.round(arrMin(lVals) * 100) / 100,
+      maxL: Math.round(arrMax(lVals) * 100) / 100,
+      greenness: Math.round(greenness * 100) / 100,
+      status,
+      timestamp: new Date()
+    };
+  };
+
+  const handleCanvasMouseDown = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (activeTool === 'select' || !capturedImage) return;
+
+    const canvas = roiCanvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    setIsDrawing(true);
+    setDrawStart({ x, y });
+
+    if (activeTool === 'point') {
+      const newRoi: ROI = { id: `roi-${Date.now()}`, type: 'point', x, y };
+      setRois((prev) => [...prev, newRoi]);
+      setActiveRoi(newRoi);
+      const measurement = analyzeROI(newRoi);
+      if (measurement) setMeasurements((prev) => [...prev, measurement]);
+      setIsDrawing(false);
+    }
+  };
+
+  const handleCanvasMouseMove = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !drawStart || activeTool === 'select' || activeTool === 'point') return;
+
+    const canvas = roiCanvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    const previewRoi: ROI = {
+      id: 'preview',
+      type: activeTool === 'line' ? 'line' : activeTool === 'ellipse' ? 'ellipse' : 'rect',
+      x: activeTool === 'line' ? drawStart.x : Math.min(drawStart.x, x),
+      y: activeTool === 'line' ? drawStart.y : Math.min(drawStart.y, y),
+      width: Math.abs(x - drawStart.x),
+      height: Math.abs(y - drawStart.y),
+      x2: activeTool === 'line' ? x : undefined,
+      y2: activeTool === 'line' ? y : undefined
+    };
+    setActiveRoi(previewRoi);
+  };
+
+  const handleCanvasMouseUp = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !drawStart) return;
+
+    const canvas = roiCanvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    if (activeTool !== 'point' && activeTool !== 'select') {
+      const newRoi: ROI = {
+        id: `roi-${Date.now()}`,
+        type: activeTool === 'line' ? 'line' : activeTool === 'ellipse' ? 'ellipse' : 'rect',
+        x: activeTool === 'line' ? drawStart.x : Math.min(drawStart.x, x),
+        y: activeTool === 'line' ? drawStart.y : Math.min(drawStart.y, y),
+        width: Math.abs(x - drawStart.x),
+        height: Math.abs(y - drawStart.y),
+        x2: activeTool === 'line' ? x : undefined,
+        y2: activeTool === 'line' ? y : undefined
+      };
+
+      if (newRoi.width && newRoi.width > 5 || newRoi.height && newRoi.height > 5 || activeTool === 'line') {
+        setRois((prev) => [...prev, newRoi]);
+        setActiveRoi(newRoi);
+        const measurement = analyzeROI(newRoi);
+        if (measurement) setMeasurements((prev) => [...prev, measurement]);
+      }
+    }
+
+    setIsDrawing(false);
+    setDrawStart(null);
+  };
+
+  useEffect(() => {
+    const canvas = roiCanvasRef.current;
+    if (!canvas || !capturedImage) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    [...rois, activeRoi].filter(Boolean).forEach((roi) => {
+      if (!roi) return;
+
+      ctx.strokeStyle = roi.id === 'preview' ? '#fbbf24' : '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.setLineDash(roi.id === 'preview' ? [5, 5] : []);
+
+      if (roi.type === 'rect' && roi.width && roi.height) {
+        ctx.strokeRect(roi.x, roi.y, roi.width, roi.height);
+      } else if (roi.type === 'ellipse' && roi.width && roi.height) {
+        ctx.beginPath();
+        ctx.ellipse(roi.x + roi.width / 2, roi.y + roi.height / 2, roi.width / 2, roi.height / 2, 0, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else if (roi.type === 'line' && roi.x2 !== undefined && roi.y2 !== undefined) {
+        ctx.beginPath();
+        ctx.moveTo(roi.x, roi.y);
+        ctx.lineTo(roi.x2, roi.y2);
+        ctx.stroke();
+      } else if (roi.type === 'point') {
+        ctx.beginPath();
+        ctx.arc(roi.x, roi.y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+        ctx.stroke();
+      }
+    });
+    ctx.setLineDash([]);
+  }, [rois, activeRoi, capturedImage]);
+
+  const generateThresholdOverlay = (): string | null => {
+    if (!originalImageData) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = originalImageData.width;
+    canvas.height = originalImageData.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const newImageData = ctx.createImageData(originalImageData.width, originalImageData.height);
+    const { data } = originalImageData;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i],g = data[i + 1],b = data[i + 2];
+
+      let rn = r / 255,gn = g / 255,bn = b / 255;
+      rn = rn > 0.04045 ? ((rn + 0.055) / 1.055) ** 2.4 : rn / 12.92;
+      gn = gn > 0.04045 ? ((gn + 0.055) / 1.055) ** 2.4 : gn / 12.92;
+      bn = bn > 0.04045 ? ((bn + 0.055) / 1.055) ** 2.4 : bn / 12.92;
+
+      const xVal = (rn * 0.4124 + gn * 0.3576 + bn * 0.1805) * 100 / 95.047;
+      const yVal = (rn * 0.2126 + gn * 0.7152 + bn * 0.0722) * 100 / 100;
+      const zVal = (rn * 0.0193 + gn * 0.1192 + bn * 0.9505) * 100 / 108.883;
+
+      const fx = xVal > 0.008856 ? xVal ** (1 / 3) : 7.787 * xVal + 16 / 116;
+      const fy = yVal > 0.008856 ? yVal ** (1 / 3) : 7.787 * yVal + 16 / 116;
+      const fz = zVal > 0.008856 ? zVal ** (1 / 3) : 7.787 * zVal + 16 / 116;
+
+      const l = 116 * fy - 16;
+      const a = 500 * (fx - fy);
+      const bVal = 200 * (fy - fz);
+
+      const inThreshold =
+      l >= threshold.lMin && l <= threshold.lMax &&
+      a >= threshold.aMin && a <= threshold.aMax &&
+      bVal >= threshold.bMin && bVal <= threshold.bMax;
+
+      if (inThreshold) {
+        newImageData.data[i] = 255;
+        newImageData.data[i + 1] = 0;
+        newImageData.data[i + 2] = 0;
+        newImageData.data[i + 3] = 180;
+      } else {
+        newImageData.data[i + 3] = 0;
+      }
+    }
+
+    ctx.putImageData(newImageData, 0, 0);
+    return canvas.toDataURL();
+  };
+
+  const thresholdOverlay = showThresholdOverlay ? generateThresholdOverlay() : null;
+
+  const clearAllROIs = () => {
+    setRois([]);
+    setActiveRoi(null);
+    setMeasurements([]);
+  };
+
+  const exportMeasurementsCSV = () => {
+    if (measurements.length === 0) return;
+
+    const headers = ['#', 'Tipo', 'Área', 'Perímetro', 'L* Media', 'a* Media', 'b* Media', 'L* σ', 'a* σ', 'b* σ', 'Verdor', 'Estado'];
+    const rows = measurements.map((m, i) => [
+    i + 1, m.roiType, m.area, m.perimeter, m.meanL, m.meanA, m.meanB, m.stdL, m.stdA, m.stdB, m.greenness, m.status]
+    );
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mediciones_${selectedPlant?.name ?? 'analisis'}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
   const handleSaveExperiment = async (e: FormEvent) => {
     e.preventDefault();
     if (!supabase || !user || !selectedPlant) return;
@@ -459,10 +855,10 @@ export default function Experimentation() {
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
-    
+
     setSimLoadProgress(0);
     setSimModelLoaded(false);
-    
+
     const viewer = document.createElement('model-viewer');
     viewer.id = 'sim-3d-viewer';
     viewer.setAttribute('src', modelUrl);
@@ -487,9 +883,9 @@ export default function Experimentation() {
           setSimLoadProgress(progress);
         }
       } catch {
+
         // Ignorar errores de progreso
-      }
-    };
+      }};
 
     const handleLoad = () => {
       setSimModelLoaded(true);
@@ -628,7 +1024,100 @@ export default function Experimentation() {
 
       {/* Tab: CIELAB */}
       {activeTab === 'cielab' &&
-      <div data-ev-id="ev_108f0ecef3" className="grid gap-6 lg:grid-cols-2">
+      <div data-ev-id="ev_108f0ecef3" className="flex flex-col gap-6">
+        
+        {/* ImageJ-like Toolbar */}
+        <div data-ev-id="ev_imagej_toolbar" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+          <div data-ev-id="ev_b0b8ac29c6" className="flex items-center gap-1 border-r border-border pr-3">
+            <span data-ev-id="ev_3f0dd5c647" className="text-xs font-medium text-muted-foreground mr-2">Herramientas:</span>
+            <button data-ev-id="ev_420d1ae9c1"
+            onClick={() => setActiveTool('select')}
+            className={`rounded-lg p-2 ${activeTool === 'select' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="Seleccionar">
+              <Move className="h-4 w-4" />
+            </button>
+            <button data-ev-id="ev_d52ad26a68"
+            onClick={() => setActiveTool('rect')}
+            className={`rounded-lg p-2 ${activeTool === 'rect' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="ROI Rectangular">
+              <Square className="h-4 w-4" />
+            </button>
+            <button data-ev-id="ev_e57de2aec2"
+            onClick={() => setActiveTool('ellipse')}
+            className={`rounded-lg p-2 ${activeTool === 'ellipse' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="ROI Elíptica">
+              <Circle className="h-4 w-4" />
+            </button>
+            <button data-ev-id="ev_fd1c74a7e2"
+            onClick={() => setActiveTool('line')}
+            className={`rounded-lg p-2 ${activeTool === 'line' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="Línea/Perfil">
+              <Ruler className="h-4 w-4" />
+            </button>
+            <button data-ev-id="ev_dd1c2bdcd0"
+            onClick={() => setActiveTool('point')}
+            className={`rounded-lg p-2 ${activeTool === 'point' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="Punto">
+              <Crosshair className="h-4 w-4" />
+            </button>
+          </div>
+          
+          <div data-ev-id="ev_937ac41590" className="flex items-center gap-1 border-r border-border pr-3">
+            <button data-ev-id="ev_569caa5735"
+            onClick={() => setActiveTool('threshold')}
+            className={`rounded-lg p-2 ${activeTool === 'threshold' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="Umbralización">
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+            <button data-ev-id="ev_8b882fefae"
+            onClick={() => setShowThresholdOverlay(!showThresholdOverlay)}
+            className={`rounded-lg p-2 ${showThresholdOverlay ? 'bg-red-500 text-white' : 'hover:bg-muted'}`}
+            title="Mostrar/ocultar umbral">
+              <Eye className="h-4 w-4" />
+            </button>
+          </div>
+          
+          <div data-ev-id="ev_acc8977cd2" className="flex items-center gap-1 border-r border-border pr-3">
+            <button data-ev-id="ev_74f53d18c6"
+            onClick={() => setShowMeasurements(!showMeasurements)}
+            className={`rounded-lg p-2 ${showMeasurements ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            title="Tabla de mediciones">
+              <Table2 className="h-4 w-4" />
+            </button>
+          </div>
+          
+          <div data-ev-id="ev_22544b2a03" className="flex items-center gap-2 ml-auto">
+            {rois.length > 0 &&
+            <button data-ev-id="ev_134eaa35eb"
+            onClick={clearAllROIs}
+            className="rounded-lg px-3 py-1.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400">
+                Limpiar ROIs ({rois.length})
+              </button>
+            }
+            {!scale.defined && capturedImage &&
+            <button data-ev-id="ev_89101cd767"
+            onClick={() => {
+              const input = prompt('Ingresa la escala (píxeles por cm):');
+              if (input) {
+                const val = parseFloat(input);
+                if (!isNaN(val) && val > 0) {
+                  setScale({ pxPerCm: val, defined: true });
+                }
+              }
+            }}
+            className="rounded-lg px-3 py-1.5 text-xs bg-muted hover:bg-muted/80">
+                Definir escala
+              </button>
+            }
+            {scale.defined &&
+            <span data-ev-id="ev_cbc8ab17c3" className="text-xs text-muted-foreground">
+                Escala: {scale.pxPerCm} px/cm
+              </span>
+            }
+          </div>
+        </div>
+        
+        <div data-ev-id="ev_324ee45d43" className="grid gap-6 lg:grid-cols-2">
           {/* Visor 3D */}
           <div data-ev-id="ev_0733e0a78a" className="flex flex-col gap-4">
             <div data-ev-id="ev_77dd8ec0de" className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -636,22 +1125,22 @@ export default function Experimentation() {
                 <div data-ev-id="ev_3e67b2e808" className="flex items-center gap-2">
                   <span data-ev-id="ev_7b45981aa3" className="text-sm font-medium">Modelo 3D</span>
                   {modelLoaded &&
-                <span data-ev-id="ev_45ae5f3691" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <span data-ev-id="ev_45ae5f3691" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                       Listo
                     </span>
-                }
+                  }
                 </div>
                 <div data-ev-id="ev_f3d366438d" className="flex gap-2">
                   <button data-ev-id="ev_a574828e94"
-                onClick={() => setRotate(!rotate)}
-                className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
+                  onClick={() => setRotate(!rotate)}
+                  className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
 
                     <RotateCcw className="h-4 w-4" />
                   </button>
                   <button data-ev-id="ev_d8cc211dd3"
-                onClick={captureAndAnalyze}
-                disabled={capturing || !modelUrl || !modelLoaded}
-                className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                  onClick={captureAndAnalyze}
+                  disabled={capturing || !modelUrl || !modelLoaded}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
 
                     {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                     {capturing ? 'Analizando...' : 'Capturar'}
@@ -662,53 +1151,100 @@ export default function Experimentation() {
               <div data-ev-id="ev_3dcf0e68cf" className="relative h-72 w-full">
                 <div data-ev-id="ev_73e514e17a" ref={viewerRef} className="h-full w-full" />
                 {modelUrl && !modelLoaded &&
-              <div data-ev-id="ev_b9f5cb464b" className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div data-ev-id="ev_b9f5cb464b" className="absolute inset-0 flex items-center justify-center bg-black/50">
                     <div data-ev-id="ev_ffe5dd22f1" className="flex flex-col items-center gap-2 text-white">
                       <Loader2 className="h-8 w-8 animate-spin" />
                       <span data-ev-id="ev_70438eeacd" className="text-sm">Cargando...</span>
                     </div>
                   </div>
-              }
+                }
               </div>
 
               {error &&
-            <div data-ev-id="ev_f184b516ae" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+              <div data-ev-id="ev_f184b516ae" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
                   {error}
                 </div>
-            }
+              }
             </div>
 
-            {/* Canales */}
+            {/* Canales e Imagen Interactiva */}
             {analysis &&
-          <div data-ev-id="ev_fe48445357" className="rounded-xl border border-border bg-card p-4">
-                <h3 data-ev-id="ev_68f78ad7a5" className="mb-3 text-sm font-medium">Canales</h3>
-                <div data-ev-id="ev_30e1213d9d" className="flex flex-wrap gap-2">
+            <div data-ev-id="ev_fe48445357" className="rounded-xl border border-border bg-card p-4">
+                <h3 data-ev-id="ev_68f78ad7a5" className="mb-3 text-sm font-medium">Imagen de Análisis</h3>
+                <div data-ev-id="ev_30e1213d9d" className="mb-3 flex flex-wrap gap-2">
                   {(['original', 'l', 'a', 'b', 'health'] as const).map((ch) =>
-              <button data-ev-id="ev_2c61407a8b"
-              key={ch}
-              onClick={() => setActiveChannel(ch)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${activeChannel === ch ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
+                <button data-ev-id="ev_2c61407a8b"
+                key={ch}
+                onClick={() => setActiveChannel(ch)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${activeChannel === ch ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
 
                       {ch === 'original' ? 'Original' : ch === 'l' ? 'L*' : ch === 'a' ? 'a*' : ch === 'b' ? 'b*' : 'Salud'}
                     </button>
-              )}
+                )}
                 </div>
-                {channelImages[activeChannel] &&
-            <img data-ev-id="ev_85558b5beb" src={channelImages[activeChannel]} alt={activeChannel} className="mt-3 w-full rounded-lg" />
-            }
+                
+                {/* Canvas interactivo con imagen y ROI */}
+                <div data-ev-id="ev_30b7033a9d" ref={imageContainerRef} className="relative">
+                  {channelImages[activeChannel] &&
+                <>
+                      <img data-ev-id="ev_bf87759245"
+                  src={channelImages[activeChannel]}
+                  alt={activeChannel}
+                  className="w-full rounded-lg"
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    const canvas = roiCanvasRef.current;
+                    if (canvas) {
+                      canvas.width = img.naturalWidth;
+                      canvas.height = img.naturalHeight;
+                    }
+                  }} />
+
+                      {/* ROI Canvas overlay */}
+                      <canvas data-ev-id="ev_7fa1c7e307"
+                  ref={roiCanvasRef}
+                  className="absolute inset-0 h-full w-full rounded-lg"
+                  style={{ cursor: activeTool === 'select' ? 'default' : 'crosshair' }}
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onMouseLeave={() => {if (isDrawing) {setIsDrawing(false);setDrawStart(null);}}} />
+
+                      {/* Threshold overlay */}
+                      {thresholdOverlay &&
+                  <img data-ev-id="ev_39ac2f622f"
+                  src={thresholdOverlay}
+                  alt="Umbral"
+                  className="pointer-events-none absolute inset-0 h-full w-full rounded-lg" />
+
+                  }
+                    </>
+                }
+                </div>
+                
+                {/* Tool hint */}
+                {activeTool !== 'select' &&
+              <p data-ev-id="ev_a67c0f6768" className="mt-2 text-xs text-muted-foreground">
+                    {activeTool === 'rect' && 'Dibuja un rectángulo sobre la imagen para medir'}
+                    {activeTool === 'ellipse' && 'Dibuja una elipse sobre la imagen para medir'}
+                    {activeTool === 'line' && 'Dibuja una línea para medir perfil o longitud'}
+                    {activeTool === 'point' && 'Haz clic para medir un punto específico'}
+                    {activeTool === 'threshold' && 'Ajusta los umbrales LAB en el panel derecho'}
+                  </p>
+              }
               </div>
-          }
+            }
           </div>
 
           {/* Resultados */}
           <div data-ev-id="ev_8b5f11949d" className="flex flex-col gap-4">
             {!analysis ?
-          <div data-ev-id="ev_1235cbe1b1" className="flex h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border text-center">
+            <div data-ev-id="ev_1235cbe1b1" className="flex h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border text-center">
                 <Camera className="h-12 w-12 text-muted-foreground" />
                 <p data-ev-id="ev_33091c1e9c" className="text-sm text-muted-foreground">Captura una vista para analizar</p>
               </div> :
 
-          <>
+            <>
                 <div data-ev-id="ev_ee4a46ea56" className="rounded-2xl border border-border bg-card p-4">
                   <div data-ev-id="ev_e5292d4950" className="flex items-center justify-between">
                     <div data-ev-id="ev_d317da19e0">
@@ -775,27 +1311,27 @@ export default function Experimentation() {
                     <div data-ev-id="ev_lab_interp_l" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_l_label" className="text-muted-foreground">Luminosidad</div>
                       <div data-ev-id="ev_lab_interp_l_value" className={`font-medium ${
-                  analysis.labStats.l.mean > 60 ? 'text-green-600' :
-                  analysis.labStats.l.mean > 40 ? 'text-yellow-600' : 'text-red-600'}`
-                  }>
+                    analysis.labStats.l.mean > 60 ? 'text-green-600' :
+                    analysis.labStats.l.mean > 40 ? 'text-yellow-600' : 'text-red-600'}`
+                    }>
                         {analysis.labStats.l.mean > 60 ? 'Alta' : analysis.labStats.l.mean > 40 ? 'Media' : 'Baja'}
                       </div>
                     </div>
                     <div data-ev-id="ev_lab_interp_a" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_a_label" className="text-muted-foreground">Clorofila</div>
                       <div data-ev-id="ev_lab_interp_a_value" className={`font-medium ${
-                  analysis.labStats.a.mean < -10 ? 'text-green-600' :
-                  analysis.labStats.a.mean < 0 ? 'text-green-500' : 'text-red-500'}`
-                  }>
+                    analysis.labStats.a.mean < -10 ? 'text-green-600' :
+                    analysis.labStats.a.mean < 0 ? 'text-green-500' : 'text-red-500'}`
+                    }>
                         {analysis.labStats.a.mean < -10 ? 'Abundante' : analysis.labStats.a.mean < 0 ? 'Normal' : 'Deficiente'}
                       </div>
                     </div>
                     <div data-ev-id="ev_lab_interp_b" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_b_label" className="text-muted-foreground">Amarillamiento</div>
                       <div data-ev-id="ev_lab_interp_b_value" className={`font-medium ${
-                  analysis.labStats.b.mean < 15 ? 'text-green-600' :
-                  analysis.labStats.b.mean < 25 ? 'text-yellow-600' : 'text-orange-600'}`
-                  }>
+                    analysis.labStats.b.mean < 15 ? 'text-green-600' :
+                    analysis.labStats.b.mean < 25 ? 'text-yellow-600' : 'text-orange-600'}`
+                    }>
                         {analysis.labStats.b.mean < 15 ? 'Ninguno' : analysis.labStats.b.mean < 25 ? 'Leve' : 'Notable'}
                       </div>
                     </div>
@@ -814,17 +1350,17 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_l_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.l.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.l);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_l_bar"
-                          className="flex-1 rounded-t bg-gradient-to-t from-gray-600 to-gray-300"
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.l);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_l_bar"
+                            className="flex-1 rounded-t bg-gradient-to-t from-gray-600 to-gray-300"
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                     
@@ -836,18 +1372,18 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_a_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.a.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.a);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      const isGreen = i < 16; // Primera mitad es verde
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_a_bar"
-                          className={`flex-1 rounded-t ${isGreen ? 'bg-gradient-to-t from-green-700 to-green-400' : 'bg-gradient-to-t from-red-700 to-red-400'}`}
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.a);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        const isGreen = i < 16; // Primera mitad es verde
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_a_bar"
+                            className={`flex-1 rounded-t ${isGreen ? 'bg-gradient-to-t from-green-700 to-green-400' : 'bg-gradient-to-t from-red-700 to-red-400'}`}
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                     
@@ -859,18 +1395,18 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_b_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.b.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.b);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      const isBlue = i < 16; // Primera mitad es azul
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_b_bar"
-                          className={`flex-1 rounded-t ${isBlue ? 'bg-gradient-to-t from-blue-700 to-blue-400' : 'bg-gradient-to-t from-yellow-600 to-yellow-300'}`}
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.b);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        const isBlue = i < 16; // Primera mitad es azul
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_b_bar"
+                            className={`flex-1 rounded-t ${isBlue ? 'bg-gradient-to-t from-blue-700 to-blue-400' : 'bg-gradient-to-t from-yellow-600 to-yellow-300'}`}
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                   </div>
@@ -894,7 +1430,7 @@ export default function Experimentation() {
                   <Download className="h-4 w-4" /> Exportar
                 </button>
               </>
-          }
+            }
 
             <div data-ev-id="ev_f39d238060" className="rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
               <h4 data-ev-id="ev_d4b3094df6" className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-300">
@@ -906,6 +1442,7 @@ export default function Experimentation() {
             </div>
           </div>
         </div>
+      </div>
       }
 
       {/* Tab: Experimentos */}
@@ -1447,10 +1984,10 @@ export default function Experimentation() {
                           <div data-ev-id="ev_sim_progress_container" className="w-48">
                             <div data-ev-id="ev_sim_progress_bar" className="h-2 w-full overflow-hidden rounded-full bg-white/20">
                               <div
-                                data-ev-id="ev_sim_progress_fill"
-                                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300"
-                                style={{ width: `${simLoadProgress}%` }}
-                              />
+                          data-ev-id="ev_sim_progress_fill"
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300"
+                          style={{ width: `${simLoadProgress}%` }} />
+
                             </div>
                             <p data-ev-id="ev_sim_progress_text" className="mt-1 text-center text-xs text-white/70">
                               {simLoadProgress}%

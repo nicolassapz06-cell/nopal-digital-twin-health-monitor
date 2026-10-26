@@ -25,7 +25,9 @@ import {
 type Plant = Tables<'plants'>;
 type GrowthExperiment = Tables<'growth_experiments'>;
 
-type TabType = 'cielab' | 'imagej' | 'experiments' | 'simulator';
+type TabType = 'analysis' | 'growth';
+type AnalysisMode = 'stats' | 'imagej';
+type GrowthMode = 'experiments' | 'simulator';
 
 // ImageJ-like tool types
 type ImageJTool = 'select' | 'rect' | 'ellipse' | 'line' | 'point' | 'threshold' | 'adjust';
@@ -79,7 +81,9 @@ const INPUT = 'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm 
 
 export default function Experimentation() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('cielab');
+  const [activeTab, setActiveTab] = useState<TabType>('analysis');
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('stats');
+  const [growthMode, setGrowthMode] = useState<GrowthMode>('experiments');
   const [plants, setPlants] = useState<Plant[]>([]);
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -770,16 +774,16 @@ export default function Experimentation() {
     }
   };
 
-  const plantExperiments = useMemo(() => 
-    experiments.filter((e) => e.plant_id === selectedPlant?.id),
-    [experiments, selectedPlant?.id]
+  const plantExperiments = useMemo(() =>
+  experiments.filter((e) => e.plant_id === selectedPlant?.id),
+  [experiments, selectedPlant?.id]
   );
 
 
 
   // Auto-simular cuando cambian condiciones
   useEffect(() => {
-    if (activeTab === 'simulator' && selectedPlant) {
+    if (activeTab === 'growth' && growthMode === 'simulator' && selectedPlant) {
       // Obtener estado inicial desde lecturas o valores por defecto
       const initialState = {
         height: 25,
@@ -796,7 +800,7 @@ export default function Experimentation() {
 
       setSimResult(result);
     }
-  }, [simConditions, simDays, selectedPlant, activeTab, plantExperiments]);
+  }, [simConditions, simDays, selectedPlant, activeTab, growthMode, plantExperiments]);
 
   // Generar posiciones de brotes cuando cambie la predicción
   useEffect(() => {
@@ -890,9 +894,9 @@ export default function Experimentation() {
 
 
 
+
         // Ignorar errores de progreso
-      }};const handleLoad = () => {
-      setSimModelLoaded(true);
+      }};const handleLoad = () => {setSimModelLoaded(true);
       setSimLoadProgress(100);
     };
 
@@ -995,47 +999,55 @@ export default function Experimentation() {
         </select>
       </header>
 
-      {/* Tabs */}
+      {/* Tabs principales */}
       <div data-ev-id="ev_99014805cd" className="flex gap-2 border-b border-border overflow-x-auto">
         <button data-ev-id="ev_dadc54400a"
-        onClick={() => setActiveTab('cielab')}
+        onClick={() => setActiveTab('analysis')}
         className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-        activeTab === 'cielab' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
+        activeTab === 'analysis' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
         }>
 
-          <BarChart3 className="h-4 w-4" /> Análisis CIELAB
-        </button>
-        <button data-ev-id="ev_48a78fa0c6"
-        onClick={() => setActiveTab('imagej')}
-        className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-        activeTab === 'imagej' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
-        }>
-          <Target className="h-4 w-4" /> ImageJ
+          <BarChart3 className="h-4 w-4" /> Análisis
         </button>
         <button data-ev-id="ev_ac8829be99"
-        onClick={() => setActiveTab('experiments')}
+        onClick={() => setActiveTab('growth')}
         className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-        activeTab === 'experiments' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
+        activeTab === 'growth' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
         }>
 
-          <Beaker className="h-4 w-4" /> Experimentos
+          <TrendingUp className="h-4 w-4" /> Crecimiento
           {plantExperiments.length > 0 &&
           <span data-ev-id="ev_1f225bd310" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs">{plantExperiments.length}</span>
           }
         </button>
-        <button data-ev-id="ev_sim_tab"
-        onClick={() => setActiveTab('simulator')}
-        className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-        activeTab === 'simulator' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`
-        }>
-
-          <Zap className="h-4 w-4" /> Simulador
-        </button>
       </div>
 
-      {/* Tab: CIELAB */}
-      {activeTab === 'cielab' &&
-      <div data-ev-id="ev_108f0ecef3" className="grid gap-6 lg:grid-cols-2">
+      {/* Tab: Análisis (CIELAB + ImageJ) */}
+      {activeTab === 'analysis' &&
+      <>
+        {/* Sub-tabs */}
+        <div data-ev-id="ev_analysis_modes" className="flex gap-2 rounded-lg bg-muted p-1">
+          <button data-ev-id="ev_e72de57f44"
+          onClick={() => setAnalysisMode('stats')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          analysisMode === 'stats' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`
+          }>
+
+            <BarChart3 className="h-4 w-4" /> CIELAB
+          </button>
+          <button data-ev-id="ev_bc8d2a117d"
+          onClick={() => setAnalysisMode('imagej')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          analysisMode === 'imagej' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`
+          }>
+
+            <Target className="h-4 w-4" /> ImageJ
+          </button>
+        </div>
+
+        {/* Modo CIELAB */}
+        {analysisMode === 'stats' &&
+        <div data-ev-id="ev_108f0ecef3" className="grid gap-6 lg:grid-cols-2">
         {/* Visor 3D */}
         <div data-ev-id="ev_0733e0a78a" className="flex flex-col gap-4">
             <div data-ev-id="ev_77dd8ec0de" className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -1043,22 +1055,22 @@ export default function Experimentation() {
                 <div data-ev-id="ev_3e67b2e808" className="flex items-center gap-2">
                   <span data-ev-id="ev_7b45981aa3" className="text-sm font-medium">Modelo 3D</span>
                   {modelLoaded &&
-                <span data-ev-id="ev_45ae5f3691" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <span data-ev-id="ev_45ae5f3691" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                       Listo
                     </span>
-                }
+                  }
                 </div>
                 <div data-ev-id="ev_f3d366438d" className="flex gap-2">
                   <button data-ev-id="ev_a574828e94"
-                onClick={() => setRotate(!rotate)}
-                className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
+                  onClick={() => setRotate(!rotate)}
+                  className={`rounded-lg p-2 text-sm ${rotate ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
 
                     <RotateCcw className="h-4 w-4" />
                   </button>
                   <button data-ev-id="ev_d8cc211dd3"
-                onClick={captureAndAnalyze}
-                disabled={capturing || !modelUrl || !modelLoaded}
-                className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                  onClick={captureAndAnalyze}
+                  disabled={capturing || !modelUrl || !modelLoaded}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
 
                     {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                     {capturing ? 'Analizando...' : 'Capturar'}
@@ -1069,48 +1081,48 @@ export default function Experimentation() {
               <div data-ev-id="ev_3dcf0e68cf" className="relative h-72 w-full">
                 <div data-ev-id="ev_73e514e17a" ref={viewerRef} className="h-full w-full" />
                 {modelUrl && !modelLoaded &&
-              <div data-ev-id="ev_b9f5cb464b" className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div data-ev-id="ev_b9f5cb464b" className="absolute inset-0 flex items-center justify-center bg-black/50">
                     <div data-ev-id="ev_ffe5dd22f1" className="flex flex-col items-center gap-2 text-white">
                       <Loader2 className="h-8 w-8 animate-spin" />
                       <span data-ev-id="ev_70438eeacd" className="text-sm">Cargando...</span>
                     </div>
                   </div>
-              }
+                }
               </div>
 
               {error &&
-            <div data-ev-id="ev_f184b516ae" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+              <div data-ev-id="ev_f184b516ae" className="border-t border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
                   {error}
                 </div>
-            }
+              }
             </div>
 
             {/* Canales e Imagen Interactiva */}
             {analysis &&
-          <div data-ev-id="ev_a8f67e87f6" className="rounded-xl border border-border bg-card p-4">
+            <div data-ev-id="ev_a8f67e87f6" className="rounded-xl border border-border bg-card p-4">
                 <h3 data-ev-id="ev_5d7a94869c" className="mb-3 text-sm font-medium">Canales de Color</h3>
                 <div data-ev-id="ev_d8d451ddc5" className="mb-3 flex flex-wrap gap-2">
                   {(['original', 'l', 'a', 'b', 'health'] as const).map((ch) =>
-              <button data-ev-id="ev_676561acbc" key={ch} onClick={() => setActiveChannel(ch)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${activeChannel === ch ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
+                <button data-ev-id="ev_676561acbc" key={ch} onClick={() => setActiveChannel(ch)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${activeChannel === ch ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>
                       {ch === 'original' ? 'Original' : ch === 'l' ? 'L*' : ch === 'a' ? 'a*' : ch === 'b' ? 'b*' : 'Salud'}
                     </button>
-              )}
+                )}
                 </div>
                 {channelImages[activeChannel] && <img data-ev-id="ev_421fc141a6" src={channelImages[activeChannel]} alt={activeChannel} className="w-full rounded-lg" />}
               </div>
-          }
+            }
           </div>
 
           {/* Resultados */}
           <div data-ev-id="ev_8b5f11949d" className="flex flex-col gap-4">
             {!analysis ?
-          <div data-ev-id="ev_1235cbe1b1" className="flex h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border text-center">
+            <div data-ev-id="ev_1235cbe1b1" className="flex h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border text-center">
                 <Camera className="h-12 w-12 text-muted-foreground" />
                 <p data-ev-id="ev_33091c1e9c" className="text-sm text-muted-foreground">Captura una vista para analizar</p>
               </div> :
 
-          <>
+            <>
                 <div data-ev-id="ev_ee4a46ea56" className="rounded-2xl border border-border bg-card p-4">
                   <div data-ev-id="ev_e5292d4950" className="flex items-center justify-between">
                     <div data-ev-id="ev_d317da19e0">
@@ -1177,27 +1189,27 @@ export default function Experimentation() {
                     <div data-ev-id="ev_lab_interp_l" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_l_label" className="text-muted-foreground">Luminosidad</div>
                       <div data-ev-id="ev_lab_interp_l_value" className={`font-medium ${
-                  analysis.labStats.l.mean > 60 ? 'text-green-600' :
-                  analysis.labStats.l.mean > 40 ? 'text-yellow-600' : 'text-red-600'}`
-                  }>
+                    analysis.labStats.l.mean > 60 ? 'text-green-600' :
+                    analysis.labStats.l.mean > 40 ? 'text-yellow-600' : 'text-red-600'}`
+                    }>
                         {analysis.labStats.l.mean > 60 ? 'Alta' : analysis.labStats.l.mean > 40 ? 'Media' : 'Baja'}
                       </div>
                     </div>
                     <div data-ev-id="ev_lab_interp_a" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_a_label" className="text-muted-foreground">Clorofila</div>
                       <div data-ev-id="ev_lab_interp_a_value" className={`font-medium ${
-                  analysis.labStats.a.mean < -10 ? 'text-green-600' :
-                  analysis.labStats.a.mean < 0 ? 'text-green-500' : 'text-red-500'}`
-                  }>
+                    analysis.labStats.a.mean < -10 ? 'text-green-600' :
+                    analysis.labStats.a.mean < 0 ? 'text-green-500' : 'text-red-500'}`
+                    }>
                         {analysis.labStats.a.mean < -10 ? 'Abundante' : analysis.labStats.a.mean < 0 ? 'Normal' : 'Deficiente'}
                       </div>
                     </div>
                     <div data-ev-id="ev_lab_interp_b" className="rounded-lg bg-muted p-2">
                       <div data-ev-id="ev_lab_interp_b_label" className="text-muted-foreground">Amarillamiento</div>
                       <div data-ev-id="ev_lab_interp_b_value" className={`font-medium ${
-                  analysis.labStats.b.mean < 15 ? 'text-green-600' :
-                  analysis.labStats.b.mean < 25 ? 'text-yellow-600' : 'text-orange-600'}`
-                  }>
+                    analysis.labStats.b.mean < 15 ? 'text-green-600' :
+                    analysis.labStats.b.mean < 25 ? 'text-yellow-600' : 'text-orange-600'}`
+                    }>
                         {analysis.labStats.b.mean < 15 ? 'Ninguno' : analysis.labStats.b.mean < 25 ? 'Leve' : 'Notable'}
                       </div>
                     </div>
@@ -1216,17 +1228,17 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_l_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.l.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.l);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_l_bar"
-                          className="flex-1 rounded-t bg-gradient-to-t from-gray-600 to-gray-300"
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.l);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_l_bar"
+                            className="flex-1 rounded-t bg-gradient-to-t from-gray-600 to-gray-300"
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                     
@@ -1238,18 +1250,18 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_a_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.a.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.a);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      const isGreen = i < 16; // Primera mitad es verde
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_a_bar"
-                          className={`flex-1 rounded-t ${isGreen ? 'bg-gradient-to-t from-green-700 to-green-400' : 'bg-gradient-to-t from-red-700 to-red-400'}`}
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.a);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        const isGreen = i < 16; // Primera mitad es verde
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_a_bar"
+                            className={`flex-1 rounded-t ${isGreen ? 'bg-gradient-to-t from-green-700 to-green-400' : 'bg-gradient-to-t from-red-700 to-red-400'}`}
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                     
@@ -1261,18 +1273,18 @@ export default function Experimentation() {
                       </div>
                       <div data-ev-id="ev_hist_b_bars" className="flex h-12 items-end gap-px rounded bg-muted/50 p-1">
                         {analysis.histograms.b.filter((_, i) => i % 8 === 0).map((val, i) => {
-                      const maxVal = Math.max(...analysis.histograms.b);
-                      const height = maxVal > 0 ? val / maxVal * 100 : 0;
-                      const isBlue = i < 16; // Primera mitad es azul
-                      return (
-                        <div
-                          key={i}
-                          data-ev-id="ev_hist_b_bar"
-                          className={`flex-1 rounded-t ${isBlue ? 'bg-gradient-to-t from-blue-700 to-blue-400' : 'bg-gradient-to-t from-yellow-600 to-yellow-300'}`}
-                          style={{ height: `${Math.max(2, height)}%` }} />);
+                        const maxVal = Math.max(...analysis.histograms.b);
+                        const height = maxVal > 0 ? val / maxVal * 100 : 0;
+                        const isBlue = i < 16; // Primera mitad es azul
+                        return (
+                          <div
+                            key={i}
+                            data-ev-id="ev_hist_b_bar"
+                            className={`flex-1 rounded-t ${isBlue ? 'bg-gradient-to-t from-blue-700 to-blue-400' : 'bg-gradient-to-t from-yellow-600 to-yellow-300'}`}
+                            style={{ height: `${Math.max(2, height)}%` }} />);
 
 
-                    })}
+                      })}
                       </div>
                     </div>
                   </div>
@@ -1296,7 +1308,7 @@ export default function Experimentation() {
                   <Download className="h-4 w-4" /> Exportar
                 </button>
               </>
-          }
+            }
 
             <div data-ev-id="ev_f39d238060" className="rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
               <h4 data-ev-id="ev_d4b3094df6" className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-300">
@@ -1308,27 +1320,54 @@ export default function Experimentation() {
             </div>
           </div>
         </div>
+        }
+
+        {/* Modo ImageJ */}
+        {analysisMode === 'imagej' &&
+        <ImageJAnalysis
+          capturedImage={capturedImage}
+          channelImages={channelImages}
+          analysis={analysis}
+          onGoToCielab={() => setAnalysisMode('stats')} />
+        }
+      </>
       }
 
-      {/* Tab: ImageJ */}
-      {activeTab === 'imagej' &&
-      <ImageJAnalysis
-        capturedImage={capturedImage}
-        channelImages={channelImages}
-        analysis={analysis}
-        onGoToCielab={() => setActiveTab('cielab')} />
+      {/* Tab: Crecimiento (Experimentos + Simulador) */}
+      {activeTab === 'growth' &&
+      <>
+        {/* Sub-tabs */}
+        <div data-ev-id="ev_growth_modes" className="flex gap-2 rounded-lg bg-muted p-1">
+          <button data-ev-id="ev_1989ea1f30"
+          onClick={() => setGrowthMode('experiments')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          growthMode === 'experiments' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`
+          }>
 
-      }
+            <Beaker className="h-4 w-4" /> Experimentos
+            {plantExperiments.length > 0 &&
+            <span data-ev-id="ev_30a4b6e17c" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs">{plantExperiments.length}</span>
+            }
+          </button>
+          <button data-ev-id="ev_a6aa0c713e"
+          onClick={() => setGrowthMode('simulator')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          growthMode === 'simulator' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`
+          }>
 
-      {/* Tab: Experimentos */}
-      {activeTab === 'experiments' &&
-      <div data-ev-id="ev_f1338a462e" className="flex flex-col gap-6">
+            <Zap className="h-4 w-4" /> Simulador
+          </button>
+        </div>
+
+        {/* Modo Experimentos */}
+        {growthMode === 'experiments' &&
+        <div data-ev-id="ev_f1338a462e" className="flex flex-col gap-6">
           {/* Botón nuevo experimento */}
           <div data-ev-id="ev_7a805b2048" className="flex justify-between">
             <h2 data-ev-id="ev_ea6f91ac9a" className="text-lg font-semibold">Experimentos de {selectedPlant?.name}</h2>
             <button data-ev-id="ev_96bdcbb8d4"
-          onClick={() => setShowExpForm(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+            onClick={() => setShowExpForm(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
 
               <Plus className="h-4 w-4" /> Nuevo experimento
             </button>
@@ -1336,7 +1375,7 @@ export default function Experimentation() {
 
           {/* Formulario */}
           {showExpForm &&
-        <div data-ev-id="ev_86ec0a03d9" className="rounded-2xl border border-border bg-card p-4">
+          <div data-ev-id="ev_86ec0a03d9" className="rounded-2xl border border-border bg-card p-4">
               <h3 data-ev-id="ev_bda7af236a" className="mb-4 font-medium">Registrar experimento</h3>
               <form data-ev-id="ev_2c59abc38d" onSubmit={handleSaveExperiment} className="flex flex-col gap-4">
                 <div data-ev-id="ev_7e568a70b6" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1424,11 +1463,11 @@ export default function Experimentation() {
                 </div>
               </form>
             </div>
-        }
+          }
 
           {/* Lista de experimentos */}
           {plantExperiments.length === 0 ?
-        <div data-ev-id="ev_ce1dd5d4e5" className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border py-16 text-center">
+          <div data-ev-id="ev_ce1dd5d4e5" className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border py-16 text-center">
               <Beaker className="h-12 w-12 text-muted-foreground" />
               <div data-ev-id="ev_9dc8e45a34">
                 <p data-ev-id="ev_3588458666" className="font-medium">Sin experimentos</p>
@@ -1436,15 +1475,15 @@ export default function Experimentation() {
               </div>
             </div> :
 
-        <div data-ev-id="ev_375b1b12af" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div data-ev-id="ev_375b1b12af" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {plantExperiments.map((exp) =>
-          <div data-ev-id="ev_9797549a5a" key={exp.id} className="rounded-xl border border-border bg-card p-4">
+            <div data-ev-id="ev_9797549a5a" key={exp.id} className="rounded-xl border border-border bg-card p-4">
                   <div data-ev-id="ev_f45cac54a4" className="mb-3 flex items-start justify-between">
                     <div data-ev-id="ev_c2c3a0b01f">
                       <h4 data-ev-id="ev_2cacd2de57" className="font-medium">{exp.name}</h4>
                       {exp.condition_label &&
-                <span data-ev-id="ev_04941fa460" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{exp.condition_label}</span>
-                }
+                  <span data-ev-id="ev_04941fa460" className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{exp.condition_label}</span>
+                  }
                     </div>
                     <button data-ev-id="ev_8a5fec8009" onClick={() => deleteExperiment(exp.id)} className="text-muted-foreground hover:text-red-500">
                       <Trash2 className="h-4 w-4" />
@@ -1452,57 +1491,57 @@ export default function Experimentation() {
                   </div>
 
                   {exp.duration_days &&
-            <div data-ev-id="ev_648d3cd9d7" className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <div data-ev-id="ev_648d3cd9d7" className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
                       <Calendar className="h-3 w-3" /> {exp.duration_days} días
                     </div>
-            }
+              }
 
                   {/* Resultados */}
                   <div data-ev-id="ev_554f2f2f72" className="grid grid-cols-3 gap-2 text-center text-xs">
                     {exp.height_change_cm !== null &&
-              <div data-ev-id="ev_18af03629e" className="rounded bg-muted p-2">
+                <div data-ev-id="ev_18af03629e" className="rounded bg-muted p-2">
                         <div data-ev-id="ev_0973910d65" className="text-muted-foreground">Altura</div>
                         <div data-ev-id="ev_0a562e1f22" className={`font-medium ${Number(exp.height_change_cm) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {Number(exp.height_change_cm) >= 0 ? '+' : ''}{exp.height_change_cm} cm
                         </div>
                       </div>
-              }
+                }
                     {exp.new_sprouts !== null &&
-              <div data-ev-id="ev_a9368dfd91" className="rounded bg-muted p-2">
+                <div data-ev-id="ev_a9368dfd91" className="rounded bg-muted p-2">
                         <div data-ev-id="ev_eef76795f9" className="text-muted-foreground">Brotes</div>
                         <div data-ev-id="ev_3f6d1dae53" className={`font-medium ${Number(exp.new_sprouts) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {Number(exp.new_sprouts) >= 0 ? '+' : ''}{exp.new_sprouts}
                         </div>
                       </div>
-              }
+                }
                     {exp.cladode_change !== null &&
-              <div data-ev-id="ev_b2c8cc3d24" className="rounded bg-muted p-2">
+                <div data-ev-id="ev_b2c8cc3d24" className="rounded bg-muted p-2">
                         <div data-ev-id="ev_d9f243a5ab" className="text-muted-foreground">Pencas</div>
                         <div data-ev-id="ev_4ae38743f4" className={`font-medium ${Number(exp.cladode_change) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {Number(exp.cladode_change) >= 0 ? '+' : ''}{exp.cladode_change}
                         </div>
                       </div>
-              }
+                }
                   </div>
 
                   {exp.health_status &&
-            <div data-ev-id="ev_0e8879ff6e" className="mt-3 flex items-center gap-2">
+              <div data-ev-id="ev_0e8879ff6e" className="mt-3 flex items-center gap-2">
                       <div data-ev-id="ev_54fcd59ca1" className={`h-2 w-2 rounded-full ${getStatusColor(exp.health_status)}`} />
                       <span data-ev-id="ev_8b1cf0ae33" className="text-xs">{getStatusLabel(exp.health_status)}</span>
                     </div>
-            }
+              }
 
                   {exp.notes && <p data-ev-id="ev_2e93c2fb84" className="mt-2 text-xs text-muted-foreground">{exp.notes}</p>}
                 </div>
-          )}
+            )}
             </div>
-        }
+          }
         </div>
-      }
+        }
 
-      {/* Tab: Simulador */}
-      {activeTab === 'simulator' &&
-      <div data-ev-id="ev_sim_content" className="flex flex-col gap-6">
+        {/* Modo Simulador */}
+        {growthMode === 'simulator' &&
+        <div data-ev-id="ev_sim_content" className="flex flex-col gap-6">
           {/* Header */}
           <div data-ev-id="ev_sim_header" className="flex flex-col gap-2">
             <h2 data-ev-id="ev_sim_title" className="flex items-center gap-2 text-lg font-semibold">
@@ -1512,9 +1551,9 @@ export default function Experimentation() {
             <p data-ev-id="ev_sim_desc" className="text-sm text-muted-foreground">
               Predice el crecimiento de {selectedPlant?.name} bajo diferentes condiciones ambientales.
               {plantExperiments.length > 0 ?
-            ` Basado en ${plantExperiments.length} experimento(s) registrado(s).` :
-            ' Usa valores de referencia para Opuntia (registra experimentos para mejorar precisión).'
-            }
+              ` Basado en ${plantExperiments.length} experimento(s) registrado(s).` :
+              ' Usa valores de referencia para Opuntia (registra experimentos para mejorar precisión).'
+              }
             </p>
           </div>
 
@@ -1535,10 +1574,10 @@ export default function Experimentation() {
                     <span data-ev-id="ev_sim_temp_value" className="font-medium">{simConditions.temperature_c}°C</span>
                   </label>
                   <input data-ev-id="ev_sim_temp_slider"
-                type="range" min="5" max="45" step="1"
-                value={simConditions.temperature_c}
-                onChange={(e) => setSimConditions({ ...simConditions, temperature_c: Number(e.target.value) })}
-                className="mt-2 w-full accent-primary" />
+                  type="range" min="5" max="45" step="1"
+                  value={simConditions.temperature_c}
+                  onChange={(e) => setSimConditions({ ...simConditions, temperature_c: Number(e.target.value) })}
+                  className="mt-2 w-full accent-primary" />
 
                   <div data-ev-id="ev_sim_temp_range" className="flex justify-between text-xs text-muted-foreground">
                     <span data-ev-id="ev_sim_temp_min">5°C</span><span data-ev-id="ev_sim_temp_opt">Óptimo: 18-28°C</span><span data-ev-id="ev_sim_temp_max">45°C</span>
@@ -1554,10 +1593,10 @@ export default function Experimentation() {
                     <span data-ev-id="ev_sim_hum_value" className="font-medium">{simConditions.humidity_percent}%</span>
                   </label>
                   <input data-ev-id="ev_sim_hum_slider"
-                type="range" min="10" max="90" step="1"
-                value={simConditions.humidity_percent}
-                onChange={(e) => setSimConditions({ ...simConditions, humidity_percent: Number(e.target.value) })}
-                className="mt-2 w-full accent-primary" />
+                  type="range" min="10" max="90" step="1"
+                  value={simConditions.humidity_percent}
+                  onChange={(e) => setSimConditions({ ...simConditions, humidity_percent: Number(e.target.value) })}
+                  className="mt-2 w-full accent-primary" />
 
                   <div data-ev-id="ev_sim_hum_range" className="flex justify-between text-xs text-muted-foreground">
                     <span data-ev-id="ev_sim_hum_min">10%</span><span data-ev-id="ev_sim_hum_opt">Óptimo: 30-60%</span><span data-ev-id="ev_sim_hum_max">90%</span>
@@ -1573,10 +1612,10 @@ export default function Experimentation() {
                     <span data-ev-id="ev_sim_ph_value" className="font-medium">{simConditions.soil_ph}</span>
                   </label>
                   <input data-ev-id="ev_sim_ph_slider"
-                type="range" min="4" max="9" step="0.1"
-                value={simConditions.soil_ph}
-                onChange={(e) => setSimConditions({ ...simConditions, soil_ph: Number(e.target.value) })}
-                className="mt-2 w-full accent-primary" />
+                  type="range" min="4" max="9" step="0.1"
+                  value={simConditions.soil_ph}
+                  onChange={(e) => setSimConditions({ ...simConditions, soil_ph: Number(e.target.value) })}
+                  className="mt-2 w-full accent-primary" />
 
                   <div data-ev-id="ev_sim_ph_range" className="flex justify-between text-xs text-muted-foreground">
                     <span data-ev-id="ev_sim_ph_min">4.0</span><span data-ev-id="ev_sim_ph_opt">Óptimo: 6.0-7.5</span><span data-ev-id="ev_sim_ph_max">9.0</span>
@@ -1592,10 +1631,10 @@ export default function Experimentation() {
                     <span data-ev-id="ev_sim_light_value" className="font-medium">{(simConditions.light_intensity_lux / 1000).toFixed(0)}k lux</span>
                   </label>
                   <input data-ev-id="ev_sim_light_slider"
-                type="range" min="1000" max="80000" step="1000"
-                value={simConditions.light_intensity_lux}
-                onChange={(e) => setSimConditions({ ...simConditions, light_intensity_lux: Number(e.target.value) })}
-                className="mt-2 w-full accent-primary" />
+                  type="range" min="1000" max="80000" step="1000"
+                  value={simConditions.light_intensity_lux}
+                  onChange={(e) => setSimConditions({ ...simConditions, light_intensity_lux: Number(e.target.value) })}
+                  className="mt-2 w-full accent-primary" />
 
                   <div data-ev-id="ev_sim_light_range" className="flex justify-between text-xs text-muted-foreground">
                     <span data-ev-id="ev_sim_light_min">1k</span><span data-ev-id="ev_sim_light_opt">Óptimo: 10-50k lux</span><span data-ev-id="ev_sim_light_max">80k</span>
@@ -1611,10 +1650,10 @@ export default function Experimentation() {
                     <span data-ev-id="ev_sim_irrig_value" className="font-medium">cada {simConditions.irrigation_frequency_days} días</span>
                   </label>
                   <input data-ev-id="ev_sim_irrig_slider"
-                type="range" min="1" max="21" step="1"
-                value={simConditions.irrigation_frequency_days}
-                onChange={(e) => setSimConditions({ ...simConditions, irrigation_frequency_days: Number(e.target.value) })}
-                className="mt-2 w-full accent-primary" />
+                  type="range" min="1" max="21" step="1"
+                  value={simConditions.irrigation_frequency_days}
+                  onChange={(e) => setSimConditions({ ...simConditions, irrigation_frequency_days: Number(e.target.value) })}
+                  className="mt-2 w-full accent-primary" />
 
                   <div data-ev-id="ev_sim_irrig_range" className="flex justify-between text-xs text-muted-foreground">
                     <span data-ev-id="ev_sim_irrig_min">Diario</span><span data-ev-id="ev_sim_irrig_opt">Óptimo: 5-14 días</span><span data-ev-id="ev_sim_irrig_max">21 días</span>
@@ -1629,16 +1668,16 @@ export default function Experimentation() {
                 </h3>
                 <div data-ev-id="ev_sim_dur_btns" className="grid grid-cols-4 gap-2">
                   {[7, 14, 30, 60].map((d) =>
-                <button data-ev-id="ev_sim_dur_btn"
-                key={d}
-                onClick={() => setSimDays(d)}
-                className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                simDays === d ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`
-                }>
+                  <button data-ev-id="ev_sim_dur_btn"
+                  key={d}
+                  onClick={() => setSimDays(d)}
+                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                  simDays === d ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`
+                  }>
 
                       {d}d
                     </button>
-                )}
+                  )}
                 </div>
               </div>
             </div>
@@ -1646,7 +1685,7 @@ export default function Experimentation() {
             {/* Resultados */}
             <div data-ev-id="ev_sim_results" className="lg:col-span-2 flex flex-col gap-4">
               {simResult &&
-            <>
+              <>
                 {/* Estado de condiciones */}
                 <div data-ev-id="ev_sim_status" className="rounded-2xl border border-border bg-card p-4">
                   <div data-ev-id="ev_sim_status_header" className="mb-4 flex items-center justify-between">
@@ -1654,32 +1693,32 @@ export default function Experimentation() {
                     <div data-ev-id="ev_sim_health_factor" className="flex items-center gap-2">
                       <span data-ev-id="ev_sim_health_label" className="text-xs text-muted-foreground">Factor de crecimiento:</span>
                       <span data-ev-id="ev_sim_health_value" className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    simResult.overallHealthFactor >= 0.8 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                    simResult.overallHealthFactor >= 0.5 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`
-                    }>
+                      simResult.overallHealthFactor >= 0.8 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      simResult.overallHealthFactor >= 0.5 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`
+                      }>
                         {Math.round(simResult.overallHealthFactor * 100)}%
                       </span>
                     </div>
                   </div>
                   <div data-ev-id="ev_sim_conditions_grid" className="grid grid-cols-5 gap-2">
                     {[
-                  { key: 'temperature', icon: <Thermometer className="h-4 w-4" />, label: 'Temp' },
-                  { key: 'humidity', icon: <Droplets className="h-4 w-4" />, label: 'Humedad' },
-                  { key: 'ph', icon: <FlaskConical className="h-4 w-4" />, label: 'pH' },
-                  { key: 'light', icon: <Sun className="h-4 w-4" />, label: 'Luz' },
-                  { key: 'irrigation', icon: <CloudRain className="h-4 w-4" />, label: 'Riego' }].
-                  map(({ key, icon, label }) => {
-                    const status = simResult.conditionEffects[key as keyof typeof simResult.conditionEffects];
-                    const style = getConditionIcon(status);
-                    return (
-                      <div data-ev-id="ev_sim_cond_item" key={key} className={`flex flex-col items-center gap-1 rounded-lg p-2 ${style.bg}`}>
+                    { key: 'temperature', icon: <Thermometer className="h-4 w-4" />, label: 'Temp' },
+                    { key: 'humidity', icon: <Droplets className="h-4 w-4" />, label: 'Humedad' },
+                    { key: 'ph', icon: <FlaskConical className="h-4 w-4" />, label: 'pH' },
+                    { key: 'light', icon: <Sun className="h-4 w-4" />, label: 'Luz' },
+                    { key: 'irrigation', icon: <CloudRain className="h-4 w-4" />, label: 'Riego' }].
+                    map(({ key, icon, label }) => {
+                      const status = simResult.conditionEffects[key as keyof typeof simResult.conditionEffects];
+                      const style = getConditionIcon(status);
+                      return (
+                        <div data-ev-id="ev_sim_cond_item" key={key} className={`flex flex-col items-center gap-1 rounded-lg p-2 ${style.bg}`}>
                           <span data-ev-id="ev_sim_cond_icon" className={style.color}>{icon}</span>
                           <span data-ev-id="ev_sim_cond_name" className="text-xs font-medium">{label}</span>
                           <span data-ev-id="ev_sim_cond_status" className={`text-xs ${style.color}`}>{style.label}</span>
                         </div>);
 
-                  })}
+                    })}
                   </div>
                 </div>
 
@@ -1714,8 +1753,8 @@ export default function Experimentation() {
                     <svg data-ev-id="ev_sim_chart_svg" viewBox="0 0 400 160" className="h-full w-full">
                       {/* Grid */}
                       {[0, 40, 80, 120, 160].map((y) =>
-                    <line data-ev-id="ev_sim_grid_line" key={y} x1="40" y1={y} x2="390" y2={y} stroke="currentColor" strokeOpacity="0.1" />
-                    )}
+                      <line data-ev-id="ev_sim_grid_line" key={y} x1="40" y1={y} x2="390" y2={y} stroke="currentColor" strokeOpacity="0.1" />
+                      )}
                       {/* Eje Y labels */}
                       <text data-ev-id="ev_sim_y_max" x="35" y="15" textAnchor="end" className="fill-muted-foreground text-[10px]">
                         {Math.round((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1)} cm
@@ -1723,22 +1762,22 @@ export default function Experimentation() {
                       <text data-ev-id="ev_sim_y_min" x="35" y="155" textAnchor="end" className="fill-muted-foreground text-[10px]">0</text>
                       {/* Línea de altura */}
                       <polyline data-ev-id="ev_sim_line"
-                    fill="none"
-                    stroke="#22c55e"
-                    strokeWidth="2"
-                    points={simResult.dailyGrowth.map((d, i) => {
-                      const x = 40 + i / simDays * 350;
-                      const maxH = (simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1;
-                      const y = 155 - d.height / maxH * 150;
-                      return `${x},${y}`;
-                    }).join(' ')} />
+                      fill="none"
+                      stroke="#22c55e"
+                      strokeWidth="2"
+                      points={simResult.dailyGrowth.map((d, i) => {
+                        const x = 40 + i / simDays * 350;
+                        const maxH = (simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1;
+                        const y = 155 - d.height / maxH * 150;
+                        return `${x},${y}`;
+                      }).join(' ')} />
 
                       {/* Punto final */}
                       <circle data-ev-id="ev_sim_endpoint"
-                    cx={390}
-                    cy={155 - (simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 25) / ((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1) * 150}
-                    r="4"
-                    fill="#22c55e" />
+                      cx={390}
+                      cy={155 - (simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 25) / ((simResult.dailyGrowth[simResult.dailyGrowth.length - 1]?.height ?? 30) * 1.1) * 150}
+                      r="4"
+                      fill="#22c55e" />
 
                       {/* Eje X labels */}
                       <text data-ev-id="ev_sim_x_start" x="40" y="158" textAnchor="start" className="fill-muted-foreground text-[10px]">Hoy</text>
@@ -1756,10 +1795,10 @@ export default function Experimentation() {
                     </span>
                   </div>
                   <span data-ev-id="ev_sim_conf_value" className={`rounded-full px-3 py-1 text-sm font-medium ${
-                simResult.confidence >= 70 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                simResult.confidence >= 40 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`
-                }>
+                  simResult.confidence >= 70 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                  simResult.confidence >= 40 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`
+                  }>
                     Confianza: {simResult.confidence}%
                   </span>
                 </div>
@@ -1771,22 +1810,22 @@ export default function Experimentation() {
                       <Sprout className="h-4 w-4 text-emerald-500" />
                       <span data-ev-id="ev_sim_3d_label" className="text-sm font-medium">Vista 3D Predictiva</span>
                       {simResult.sprouts > 0 &&
-                    <span data-ev-id="ev_sim_3d_count" className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      <span data-ev-id="ev_sim_3d_count" className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                           +{simResult.sprouts} brotes
                         </span>
-                    }
+                      }
                       {simResult.height && simResult.height > 25 &&
-                    <span data-ev-id="ev_sim_3d_scale" className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                      <span data-ev-id="ev_sim_3d_scale" className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                           ↑{Math.round((simResult.height / 25 - 1) * 100)}% altura
                         </span>
-                    }
+                      }
                     </div>
                     <button
-                    data-ev-id="ev_sim_3d_toggle"
-                    onClick={() => setShowSprouts3D(!showSprouts3D)}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    showSprouts3D ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`
-                    }>
+                      data-ev-id="ev_sim_3d_toggle"
+                      onClick={() => setShowSprouts3D(!showSprouts3D)}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      showSprouts3D ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`
+                      }>
 
                       <Eye className="h-4 w-4" />
                       {showSprouts3D ? 'Ocultar' : 'Visualizar'}
@@ -1794,60 +1833,60 @@ export default function Experimentation() {
                   </div>
 
                   {showSprouts3D &&
-                <div data-ev-id="ev_sim_3d_viewer_container" className="relative h-72">
+                  <div data-ev-id="ev_sim_3d_viewer_container" className="relative h-72">
                       <div data-ev-id="ev_sim_3d_viewer" ref={simViewerRef} className="h-full w-full" />
                       
                       {/* Overlay de brotes */}
                       {simModelLoaded && sproutPositions.length > 0 &&
-                  <div data-ev-id="ev_sim_sprouts_overlay" className="pointer-events-none absolute inset-0">
+                    <div data-ev-id="ev_sim_sprouts_overlay" className="pointer-events-none absolute inset-0">
                           {sproutPositions.map((sprout, idx) =>
-                    <div
-                      key={idx}
-                      data-ev-id="ev_sim_sprout"
-                      className="absolute animate-sprout"
-                      style={{
-                        left: `${sprout.x}%`,
-                        top: `${sprout.y}%`,
-                        animationDelay: `${sprout.delay}s`
-                      }}>
+                      <div
+                        key={idx}
+                        data-ev-id="ev_sim_sprout"
+                        className="absolute animate-sprout"
+                        style={{
+                          left: `${sprout.x}%`,
+                          top: `${sprout.y}%`,
+                          animationDelay: `${sprout.delay}s`
+                        }}>
 
                               <div
-                        data-ev-id="ev_sim_sprout_inner"
-                        className="relative flex items-center justify-center"
-                        style={{ width: sprout.size * 2, height: sprout.size * 2 }}>
+                          data-ev-id="ev_sim_sprout_inner"
+                          className="relative flex items-center justify-center"
+                          style={{ width: sprout.size * 2, height: sprout.size * 2 }}>
 
                                 {/* Glow effect */}
                                 <div
-                          data-ev-id="ev_sim_sprout_glow"
-                          className="absolute rounded-full bg-emerald-400/30 blur-sm"
-                          style={{ width: sprout.size * 2.5, height: sprout.size * 2.5 }} />
+                            data-ev-id="ev_sim_sprout_glow"
+                            className="absolute rounded-full bg-emerald-400/30 blur-sm"
+                            style={{ width: sprout.size * 2.5, height: sprout.size * 2.5 }} />
 
                                 {/* Sprout icon */}
                                 <div
-                          data-ev-id="ev_sim_sprout_icon"
-                          className="relative rounded-full bg-emerald-500 shadow-lg"
-                          style={{ width: sprout.size, height: sprout.size }}>
+                            data-ev-id="ev_sim_sprout_icon"
+                            className="relative rounded-full bg-emerald-500 shadow-lg"
+                            style={{ width: sprout.size, height: sprout.size }}>
 
                                   <Sprout
-                            className="absolute text-white"
-                            style={{
-                              width: sprout.size * 0.7,
-                              height: sprout.size * 0.7,
-                              top: '50%',
-                              left: '50%',
-                              transform: 'translate(-50%, -50%)'
-                            }} />
+                              className="absolute text-white"
+                              style={{
+                                width: sprout.size * 0.7,
+                                height: sprout.size * 0.7,
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)'
+                              }} />
 
                                 </div>
                               </div>
                             </div>
-                    )}
+                      )}
                         </div>
-                  }
+                    }
 
                       {/* Loading overlay con barra de progreso */}
                       {!simModelLoaded &&
-                  <div data-ev-id="ev_sim_3d_loading" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-sm">
+                    <div data-ev-id="ev_sim_3d_loading" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-sm">
                           <div data-ev-id="ev_sim_3d_loading_content" className="flex flex-col items-center gap-3 text-white">
                             <Loader2 className="h-8 w-8 animate-spin" />
                             <span data-ev-id="ev_sim_3d_loading_text" className="text-sm font-medium">
@@ -1859,9 +1898,9 @@ export default function Experimentation() {
                           <div data-ev-id="ev_sim_progress_container" className="w-48">
                             <div data-ev-id="ev_sim_progress_bar" className="h-2 w-full overflow-hidden rounded-full bg-white/20">
                               <div
-                          data-ev-id="ev_sim_progress_fill"
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300"
-                          style={{ width: `${simLoadProgress}%` }} />
+                            data-ev-id="ev_sim_progress_fill"
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300"
+                            style={{ width: `${simLoadProgress}%` }} />
 
                             </div>
                             <p data-ev-id="ev_sim_progress_text" className="mt-1 text-center text-xs text-white/70">
@@ -1869,34 +1908,36 @@ export default function Experimentation() {
                             </p>
                           </div>
                         </div>
-                  }
+                    }
                     </div>
-                }
+                  }
 
                   {!showSprouts3D &&
-                <div data-ev-id="ev_sim_3d_preview" className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+                  <div data-ev-id="ev_sim_3d_preview" className="flex flex-col items-center justify-center gap-3 py-8 text-center">
                       <div data-ev-id="ev_sim_3d_preview_icon" className="relative">
                         <Leaf className="h-12 w-12 text-muted-foreground" />
                         {simResult.sprouts > 0 &&
-                    <div data-ev-id="ev_sim_3d_preview_badge" className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
+                      <div data-ev-id="ev_sim_3d_preview_badge" className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
                             +{Math.min(simResult.sprouts, 9)}{simResult.sprouts > 9 ? '+' : ''}
                           </div>
-                    }
+                      }
                       </div>
                       <p data-ev-id="ev_sim_3d_preview_text" className="text-sm text-muted-foreground">
                         {simResult.sprouts > 0 ?
-                    `Visualiza ${simResult.sprouts} brote${simResult.sprouts > 1 ? 's' : ''} simulado${simResult.sprouts > 1 ? 's' : ''} en el modelo 3D` :
-                    'No se predicen brotes nuevos con estas condiciones'
-                    }
+                      `Visualiza ${simResult.sprouts} brote${simResult.sprouts > 1 ? 's' : ''} simulado${simResult.sprouts > 1 ? 's' : ''} en el modelo 3D` :
+                      'No se predicen brotes nuevos con estas condiciones'
+                      }
                       </p>
                     </div>
-                }
+                  }
                 </div>
               </>
-            }
+              }
             </div>
           </div>
         </div>
+        }
+      </>
       }
     </LayoutV2>);
 

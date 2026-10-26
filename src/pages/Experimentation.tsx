@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { Camera, Loader2, FlaskConical, Leaf, BarChart3, Activity, Download, Info, RotateCcw, Plus, Beaker, TrendingUp, Calendar, Trash2, Zap, Thermometer, Droplets, Sun, CloudRain, Sprout, Target, Eye } from 'lucide-react';
 import { LayoutV2 } from '@/components/LayoutV2';
 import { ImageJAnalysis } from '@/components/ImageJAnalysis';
@@ -172,11 +172,11 @@ export default function Experimentation() {
     setPlants(plantsRes.data ?? []);
     setExperiments(expRes.data ?? []);
 
-    if (plantsRes.data && plantsRes.data.length > 0 && !selectedPlant) {
-      setSelectedPlant(plantsRes.data[0]);
+    if (plantsRes.data && plantsRes.data.length > 0) {
+      setSelectedPlant((current) => current ?? plantsRes.data[0]);
     }
     setLoading(false);
-  }, [user, selectedPlant]);
+  }, [user]);
 
   useEffect(() => {loadData();}, [loadData]);
 
@@ -770,7 +770,10 @@ export default function Experimentation() {
     }
   };
 
-  const plantExperiments = experiments.filter((e) => e.plant_id === selectedPlant?.id);
+  const plantExperiments = useMemo(() => 
+    experiments.filter((e) => e.plant_id === selectedPlant?.id),
+    [experiments, selectedPlant?.id]
+  );
 
 
 

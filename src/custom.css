@@ -36,3 +36,95 @@
   animation: sprout-grow 2s ease-in-out infinite, sprout-glow 2s ease-in-out infinite;
 }
 
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition-duration: 160ms;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  background:
+    radial-gradient(ellipse at 82% 0%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 34rem),
+    var(--color-background);
+}
+
+.app-sidebar {
+  box-shadow: 8px 0 32px rgb(26 38 32 / 4%);
+}
+
+.app-main {
+  width: 100%;
+}
+
+.app-main-inner {
+  width: min(100%, 1600px);
+  margin-inline: auto;
+}
+
+.theme-toggle {
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-foreground);
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 9%, var(--color-card));
+}
+
+.nav-link {
+  color: var(--color-muted-foreground);
+}
+
+.nav-link:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
+.nav-link-active {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card));
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.dark input[type="color"] {
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -41,7 +41,7 @@ export function Layout({ children }: {children: ReactNode;}) {
             <Leaf className="h-5 w-5 text-primary-foreground" />
           </span>
           <div data-ev-id="ev_f8537e805f" className="flex flex-col">
-            <span data-ev-id="ev_2c438b50f8" className="text-sm font-semibold tracking-tight">NopalTwin</span>
+            <span data-ev-id="ev_2c438b50f8" className="text-sm font-semibold tracking-tight">D.Twin</span>
             <span data-ev-id="ev_46dddea893" className="text-xs text-white/60">Gemelo digital</span>
           </div>
         </div>

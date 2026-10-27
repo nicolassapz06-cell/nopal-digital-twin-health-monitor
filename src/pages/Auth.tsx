@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { Leaf, Loader2 } from 'lucide-react';
+import { Leaf, Loader2, Moon, Sun } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/auth-context';
+import { useTheme } from '@/contexts/theme-context';
 import heroImage from '@/assets/generated/nopal-hero.png';
 
 export default function Auth() {
   const { user, loading } = useAuth();
+  const { darkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -66,13 +68,17 @@ export default function Auth() {
         </div>
       </section>
 
-      <section data-ev-id="ev_5e70825174" className="flex flex-1 items-center justify-center px-6 py-12">
+      <section data-ev-id="ev_5e70825174" className="relative flex flex-1 items-center justify-center px-6 py-12">
+        <button type="button" onClick={toggleTheme} aria-pressed={darkMode} aria-label={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'} className="theme-toggle absolute right-5 top-5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+          {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <span>{darkMode ? 'Modo claro' : 'Modo oscuro'}</span>
+        </button>
         <div data-ev-id="ev_b5c8b3cf94" className="flex w-full max-w-sm flex-col gap-6">
           <div data-ev-id="ev_e58a1ca3a8" className="flex flex-col gap-2">
             <span data-ev-id="ev_f59c6823bf" className="flex h-11 w-11 items-center justify-center rounded-md bg-primary">
               <Leaf className="h-6 w-6 text-primary-foreground" />
             </span>
-            <h1 data-ev-id="ev_e760c3812b" className="text-2xl font-semibold tracking-tight">{mode === 'login' ? 'Entra a NopalTwin' : 'Crea tu cuenta'}</h1>
+            <h1 data-ev-id="ev_e760c3812b" className="text-2xl font-semibold tracking-tight">{mode === 'login' ? 'Entra a D.Twin' : 'Crea tu cuenta'}</h1>
             <p data-ev-id="ev_0c2fa20072" className="text-sm text-muted-foreground">Monitoreo y seguimiento de salud del nopal.</p>
           </div>
 

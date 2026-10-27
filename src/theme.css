@@ -1,6 +1,6 @@
 /**
  * ⚠️ THEME CONFIGURATION — Tailwind v4
- * Paleta NopalTwin: verde nopal, tuna terracota, arena.
+ * Paleta D.Twin: verde nopal, tuna terracota, arena.
  */
 @theme {
   /* Colors */
@@ -40,4 +40,31 @@
 
   /* Fonts */
   --font-sans: 'Outfit', system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-primary: #82c991;
+  --color-primary-foreground: #102216;
+  --color-secondary: #b6d2bc;
+  --color-secondary-foreground: #17241b;
+  --color-accent: #f0a36d;
+  --color-accent-foreground: #2a170d;
+  --color-destructive: #f17970;
+  --color-destructive-foreground: #2b1110;
+  --color-success: #72ca8a;
+  --color-warning: #edbd60;
+  --color-background: #101713;
+  --color-foreground: #e8f0e9;
+  --color-card: #19231d;
+  --color-card-foreground: #e8f0e9;
+  --color-muted: #253229;
+  --color-muted-foreground: #a4b3a7;
+  --color-border: #34443a;
+  --color-input: #34443a;
+  --color-ring: #82c991;
 }

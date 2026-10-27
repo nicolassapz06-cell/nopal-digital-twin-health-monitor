@@ -204,6 +204,7 @@ function viteCustomErrorOverlay(): Plugin {
 // https://vite.dev/config/
 export default defineConfig(() => {
 	return {
+		base: './',
 		// createViteLogger overrides error() too, so RollupError fields (plugin, loc, frame)
 		// reach the log as real fields instead of being formatted into one string.
 		customLogger: createViteLogger(defaultLogger, emit),

@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release
 
 # Anima L2C raw output (300-600 KB of someone else's markup, never the deliverable)
 .anima/

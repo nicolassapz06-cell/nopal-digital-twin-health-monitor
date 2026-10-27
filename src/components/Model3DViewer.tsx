@@ -95,48 +95,52 @@ export function Model3DViewer({
     const container = viewerRef.current;
     if (!container || !displayUrl) return;
 
-    container.innerHTML = '';
-
     const viewer = document.createElement('model-viewer');
     viewer.setAttribute('src', displayUrl);
     viewer.setAttribute('alt', 'Modelo 3D texturizado de planta');
-
-    if (rotate) viewer.setAttribute('auto-rotate', '');
     viewer.setAttribute('camera-controls', '');
     viewer.setAttribute('touch-action', 'pan-y');
-    viewer.setAttribute('camera-orbit', `0deg 75deg ${zoom}%`);
     viewer.setAttribute('min-camera-orbit', 'auto auto 30%');
     viewer.setAttribute('max-camera-orbit', 'auto auto 300%');
     viewer.setAttribute('field-of-view', '30deg');
     viewer.setAttribute('interpolation-decay', '100');
-    viewer.setAttribute('exposure', lighting.exposure);
-    viewer.setAttribute('shadow-intensity', lighting.shadowIntensity);
-    viewer.setAttribute('environment-image', lighting.environmentImage);
     viewer.setAttribute('tone-mapping', 'neutral');
     viewer.setAttribute('disable-tap', '');
     viewer.setAttribute('loading', 'eager');
     viewer.setAttribute('reveal', 'auto');
-
-    if (scale !== 1) {
-      viewer.setAttribute('scale', `${scale} ${scale} ${scale}`);
-    }
-
     viewer.style.width = '100%';
     viewer.style.height = '100%';
     viewer.style.backgroundColor = 'transparent';
     viewer.style.setProperty('--poster-color', 'transparent');
-
-    // Aplicar filtro CSS para índices de vegetación
-    if (isVegetationIndex) {
-      viewer.style.filter = getIndexCSSFilter(colorMode as VegetationIndexType);
-    }
-
-    container.appendChild(viewer);
+    container.replaceChildren(viewer);
 
     return () => {
-      container.innerHTML = '';
+      if (viewer.parentElement === container) {
+        container.removeChild(viewer);
+      }
     };
-  }, [displayUrl, rotate, zoom, scale, lightingMode, lighting, colorMode, isVegetationIndex]);
+  }, [displayUrl]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current?.querySelector('model-viewer');
+    if (!viewer) return;
+
+    if (rotate) viewer.setAttribute('auto-rotate', '');
+    else viewer.removeAttribute('auto-rotate');
+    viewer.setAttribute('camera-orbit', `0deg 75deg ${zoom}%`);
+    viewer.setAttribute('exposure', lighting.exposure);
+    viewer.setAttribute('shadow-intensity', lighting.shadowIntensity);
+    viewer.setAttribute('environment-image', lighting.environmentImage);
+
+    if (scale !== 1) viewer.setAttribute('scale', `${scale} ${scale} ${scale}`);
+    else viewer.removeAttribute('scale');
+
+    if (isVegetationIndex) {
+      viewer.style.filter = getIndexCSSFilter(colorMode as VegetationIndexType);
+    } else {
+      viewer.style.removeProperty('filter');
+    }
+  }, [displayUrl, rotate, zoom, scale, lighting, colorMode, isVegetationIndex]);
 
   const getOverlayStyle = (): React.CSSProperties | null => {
     if (colorMode === 'texture' || !displayUrl || isVegetationIndex) return null;

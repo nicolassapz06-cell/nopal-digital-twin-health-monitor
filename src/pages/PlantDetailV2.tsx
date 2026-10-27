@@ -37,11 +37,23 @@ export default function PlantDetailV2() {
   const [showPhenoForm, setShowPhenoForm] = useState(false);
   const [busyEnv, setBusyEnv] = useState(false);
   const [busyPheno, setBusyPheno] = useState(false);
+  const [envError, setEnvError] = useState<string | null>(null);
+  const [phenoError, setPhenoError] = useState<string | null>(null);
   const [colorHex, setColorHex] = useState('#3a7d44');
   const [phenoFile, setPhenoFile] = useState<File | null>(null);
 
-  const [envForm, setEnvForm] = useState({ soil_moisture: '', soil_ph: '', air_temperature: '', light_intensity: '', irrigation_frequency_days: '', hours_since_irrigation: '' });
-  const [phenoForm, setPhenoForm] = useState({ height_cm: '', cladode_count: '', new_sprouts: '', visual_state: '', general_state: '' });
+  const [envForm, setEnvForm] = useState({
+    soil_moisture: '', soil_ph: '', air_temperature: '', humidity_percent: '',
+    light_intensity: '', par_umol_m2_s: '', vpd_kpa: '', precipitation_mm: '',
+    hours_since_rain: ''
+  });
+  const [phenoForm, setPhenoForm] = useState({
+    height_cm: '', cladode_count: '', cladode_length_cm: '', cladode_width_cm: '',
+    cladode_thickness_mm: '', new_sprouts: '', sprout_length_cm: '', sprout_width_cm: '',
+    spots_present: false, spots_description: '', lesions_present: false,
+    lesions_description: '', wrinkles_present: false, wrinkles_description: '',
+    turgor: '', texture: '', visual_state: '', general_state: ''
+  });
 
   const load = useCallback(async () => {
     if (!supabase || !user || !id) return;
@@ -105,22 +117,31 @@ export default function PlantDetailV2() {
     e.preventDefault();
     if (!supabase || !user || !id) return;
     setBusyEnv(true);
+    setEnvError(null);
 
     const payload = {
       user_id: user.id, plant_id: id,
       soil_moisture: num(envForm.soil_moisture), soil_ph: num(envForm.soil_ph),
-      air_temperature: num(envForm.air_temperature), light_intensity: num(envForm.light_intensity),
-      irrigation_frequency_days: num(envForm.irrigation_frequency_days),
-      hours_since_irrigation: num(envForm.hours_since_irrigation)
+      air_temperature: num(envForm.air_temperature), humidity_percent: num(envForm.humidity_percent),
+      light_intensity: num(envForm.light_intensity), par_umol_m2_s: num(envForm.par_umol_m2_s),
+      vpd_kpa: num(envForm.vpd_kpa), precipitation_mm: num(envForm.precipitation_mm),
+      hours_since_rain: num(envForm.hours_since_rain)
     };
 
     const { error } = await supabase.from('environmental_readings').insert(payload);
-    if (!error) {
+    if (error) {
+      setEnvError(error.message);
+    } else {
       await saveAlerts(user.id, id, evaluateMeasurement({
         ph: payload.soil_ph, soil_moisture: payload.soil_moisture,
-        air_temp: payload.air_temperature, humidity: null, light_lux: payload.light_intensity, ec: null
+        air_temp: payload.air_temperature, humidity: payload.humidity_percent,
+        light_lux: payload.light_intensity, ec: null
       }, thresholds));
-      setEnvForm({ soil_moisture: '', soil_ph: '', air_temperature: '', light_intensity: '', irrigation_frequency_days: '', hours_since_irrigation: '' });
+      setEnvForm({
+        soil_moisture: '', soil_ph: '', air_temperature: '', humidity_percent: '',
+        light_intensity: '', par_umol_m2_s: '', vpd_kpa: '', precipitation_mm: '',
+        hours_since_rain: ''
+      });
       setShowEnvForm(false);
       load();
     }
@@ -141,6 +162,7 @@ export default function PlantDetailV2() {
     e.preventDefault();
     if (!supabase || !user || !id) return;
     setBusyPheno(true);
+    setPhenoError(null);
 
     let photoPath: string | null = null;
     if (phenoFile) photoPath = await uploadPhoto(user.id, phenoFile, `pheno/${id}`);
@@ -148,20 +170,37 @@ export default function PlantDetailV2() {
     const rgb = hexToRgb(colorHex);
     const hsv = rgbToHsv(rgb);
 
-    await supabase.from('phenotypic_readings').insert({
+    const { error } = await supabase.from('phenotypic_readings').insert({
       user_id: user.id, plant_id: id,
       height_cm: num(phenoForm.height_cm), cladode_count: phenoForm.cladode_count ? Number(phenoForm.cladode_count) : null,
+      cladode_length_cm: num(phenoForm.cladode_length_cm), cladode_width_cm: num(phenoForm.cladode_width_cm),
+      cladode_thickness_mm: num(phenoForm.cladode_thickness_mm),
       new_sprouts: phenoForm.new_sprouts ? Number(phenoForm.new_sprouts) : null,
+      sprout_length_cm: num(phenoForm.sprout_length_cm), sprout_width_cm: num(phenoForm.sprout_width_cm),
+      spots_present: phenoForm.spots_present, spots_description: phenoForm.spots_description || null,
+      lesions_present: phenoForm.lesions_present, lesions_description: phenoForm.lesions_description || null,
+      wrinkles_present: phenoForm.wrinkles_present, wrinkles_description: phenoForm.wrinkles_description || null,
+      turgor: phenoForm.turgor || null, texture: phenoForm.texture || null,
       visual_state: phenoForm.visual_state || null, general_state: phenoForm.general_state || null,
       color_hex: colorHex, color_hue: hsv.h, color_saturation: hsv.s, color_value: hsv.v,
       green_index: greenIndex(rgb), photo_url: photoPath
     });
 
-    setPhenoForm({ height_cm: '', cladode_count: '', new_sprouts: '', visual_state: '', general_state: '' });
-    setPhenoFile(null);
-    setShowPhenoForm(false);
+    if (error) {
+      setPhenoError(error.message);
+    } else {
+      setPhenoForm({
+        height_cm: '', cladode_count: '', cladode_length_cm: '', cladode_width_cm: '',
+        cladode_thickness_mm: '', new_sprouts: '', sprout_length_cm: '', sprout_width_cm: '',
+        spots_present: false, spots_description: '', lesions_present: false,
+        lesions_description: '', wrinkles_present: false, wrinkles_description: '',
+        turgor: '', texture: '', visual_state: '', general_state: ''
+      });
+      setPhenoFile(null);
+      setShowPhenoForm(false);
+      load();
+    }
     setBusyPheno(false);
-    load();
   };
 
   const handleDelete = async () => {
@@ -209,14 +248,45 @@ export default function PlantDetailV2() {
 
             </div>
             
-            {/* Variables rápidas */}
-            <div data-ev-id="ev_06b2ad4347" className="grid grid-cols-3 gap-px border-t border-border bg-border sm:grid-cols-6">
-              <Stat icon={<Droplets className="h-3.5 w-3.5 text-blue-500" />} label="Humedad" value={latestEnv?.soil_moisture} unit="%" />
-              <Stat icon={<span data-ev-id="ev_6e65006ed3" className="text-xs">pH</span>} label="pH" value={latestEnv?.soil_ph} />
-              <Stat icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label="Temp" value={latestEnv?.air_temperature} unit="°C" />
-              <Stat icon={<Sun className="h-3.5 w-3.5 text-yellow-500" />} label="Luz" value={latestEnv?.light_intensity} unit=" lux" />
-              <Stat icon={<Sprout className="h-3.5 w-3.5 text-green-500" />} label="Altura" value={latestPheno?.height_cm ?? plant.height_cm} unit=" cm" />
-              <Stat icon={<span data-ev-id="ev_0275adb93e" className="text-xs">🌿</span>} label="Pencas" value={latestPheno?.cladode_count ?? plant.cladode_count} />
+            {/* Resumen de mediciones */}
+            <div data-ev-id="ev_06b2ad4347" className="grid gap-3 border-t border-border bg-muted/20 p-3 sm:p-4">
+              <section className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-2 border-b border-border px-3 py-2.5 sm:px-4">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <Thermometer className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-sm font-semibold">Ambiente</h2>
+                    <p className="text-[11px] text-muted-foreground">Condiciones actuales de cultivo</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 sm:p-3">
+                  <Stat icon={<Droplets className="h-3.5 w-3.5 text-blue-500" />} label="Humedad sustrato" value={latestEnv?.soil_moisture} unit="%" />
+                  <Stat icon={<span data-ev-id="ev_6e65006ed3" className="text-xs">pH</span>} label="pH" value={latestEnv?.soil_ph} />
+                  <Stat icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label="Temp. aire" value={latestEnv?.air_temperature} unit="°C" />
+                  <Stat icon={<Droplets className="h-3.5 w-3.5 text-blue-500" />} label="Humedad relativa" value={latestEnv?.humidity_percent} unit="%" />
+                  <Stat icon={<Sun className="h-3.5 w-3.5 text-yellow-500" />} label="Intensidad luminosa" value={latestEnv?.light_intensity} unit=" lux" />
+                  <Stat icon={<Sun className="h-3.5 w-3.5 text-yellow-500" />} label="PAR" value={latestEnv?.par_umol_m2_s} unit=" µmol/m²/s" />
+                  <Stat icon={<span className="text-xs">VPD</span>} label="Déficit presión vapor" value={latestEnv?.vpd_kpa} unit=" kPa" />
+                  <Stat icon={<Droplets className="h-3.5 w-3.5 text-blue-500" />} label="Precipitación" value={latestEnv?.precipitation_mm} unit=" mm" />
+                  <Stat icon={<span className="text-xs">⏱</span>} label="Desde última lluvia" value={latestEnv?.hours_since_rain} unit=" h" />
+                </div>
+              </section>
+              <section className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="flex items-center gap-2 border-b border-border px-3 py-2.5 sm:px-4">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500/10 text-green-600 dark:text-green-400">
+                    <Sprout className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-sm font-semibold">Desarrollo de la planta</h2>
+                    <p className="text-[11px] text-muted-foreground">Medidas fenotípicas más recientes</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 p-2 sm:p-3">
+                  <Stat icon={<Sprout className="h-3.5 w-3.5 text-green-500" />} label="Altura" value={latestPheno?.height_cm ?? plant.height_cm} unit=" cm" />
+                  <Stat icon={<span data-ev-id="ev_0275adb93e" className="text-xs">🌿</span>} label="Pencas" value={latestPheno?.cladode_count ?? plant.cladode_count} />
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -236,13 +306,19 @@ export default function PlantDetailV2() {
             </div>
             
             {showEnvForm &&
-            <form data-ev-id="ev_89cde7267a" onSubmit={handleEnvSubmit} className="mt-4 flex flex-col gap-3">
-                <div data-ev-id="ev_e248bedc13" className="grid grid-cols-2 gap-3">
-                  <input data-ev-id="ev_90c0c54a3b" placeholder="Humedad %" type="number" step="0.1" value={envForm.soil_moisture} onChange={(e) => setEnvForm({ ...envForm, soil_moisture: e.target.value })} className={INPUT} />
-                  <input data-ev-id="ev_e115ae0497" placeholder="pH" type="number" step="0.1" value={envForm.soil_ph} onChange={(e) => setEnvForm({ ...envForm, soil_ph: e.target.value })} className={INPUT} />
-                  <input data-ev-id="ev_a633ae9446" placeholder="Temp °C" type="number" step="0.1" value={envForm.air_temperature} onChange={(e) => setEnvForm({ ...envForm, air_temperature: e.target.value })} className={INPUT} />
-                  <input data-ev-id="ev_9632428299" placeholder="Luz (lux)" type="number" value={envForm.light_intensity} onChange={(e) => setEnvForm({ ...envForm, light_intensity: e.target.value })} className={INPUT} />
+            <form data-ev-id="ev_89cde7267a" onSubmit={handleEnvSubmit} className="mt-4 flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <NumericField label="Humedad del sustrato (%)" value={envForm.soil_moisture} onChange={(value) => setEnvForm({ ...envForm, soil_moisture: value })} />
+                  <NumericField label="pH del sustrato" value={envForm.soil_ph} onChange={(value) => setEnvForm({ ...envForm, soil_ph: value })} />
+                  <NumericField label="Temperatura del aire (°C)" value={envForm.air_temperature} onChange={(value) => setEnvForm({ ...envForm, air_temperature: value })} />
+                  <NumericField label="Humedad relativa (%)" value={envForm.humidity_percent} onChange={(value) => setEnvForm({ ...envForm, humidity_percent: value })} />
+                  <NumericField label="Intensidad luminosa (lux)" value={envForm.light_intensity} onChange={(value) => setEnvForm({ ...envForm, light_intensity: value })} />
+                  <NumericField label="PAR (µmol/m²/s)" value={envForm.par_umol_m2_s} onChange={(value) => setEnvForm({ ...envForm, par_umol_m2_s: value })} />
+                  <NumericField label="Déficit de presión de vapor (kPa)" value={envForm.vpd_kpa} onChange={(value) => setEnvForm({ ...envForm, vpd_kpa: value })} />
+                  <NumericField label="Precipitación (mm)" value={envForm.precipitation_mm} onChange={(value) => setEnvForm({ ...envForm, precipitation_mm: value })} />
+                  <NumericField label="Horas desde la última lluvia" value={envForm.hours_since_rain} onChange={(value) => setEnvForm({ ...envForm, hours_since_rain: value })} />
                 </div>
+                {envError && <p role="alert" className="text-sm text-destructive">{envError}</p>}
                 <button data-ev-id="ev_d95e7f39b7" type="submit" disabled={busyEnv} className="rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">
                   {busyEnv ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Guardar'}
                 </button>
@@ -250,27 +326,73 @@ export default function PlantDetailV2() {
             }
             
             {showPhenoForm &&
-            <form data-ev-id="ev_815ee430a5" onSubmit={handlePhenoSubmit} className="mt-4 flex flex-col gap-3">
-                <div data-ev-id="ev_557c45948b" className="grid grid-cols-2 gap-3">
-                  <input data-ev-id="ev_dee027df2d" placeholder="Altura cm" type="number" step="0.1" value={phenoForm.height_cm} onChange={(e) => setPhenoForm({ ...phenoForm, height_cm: e.target.value })} className={INPUT} />
-                  <input data-ev-id="ev_4889f083e4" placeholder="Núm. pencas" type="number" value={phenoForm.cladode_count} onChange={(e) => setPhenoForm({ ...phenoForm, cladode_count: e.target.value })} className={INPUT} />
-                  <input data-ev-id="ev_63a3f76116" placeholder="Brotes nuevos" type="number" value={phenoForm.new_sprouts} onChange={(e) => setPhenoForm({ ...phenoForm, new_sprouts: e.target.value })} className={INPUT} />
-                  <select data-ev-id="ev_aed75fd506" value={phenoForm.visual_state} onChange={(e) => setPhenoForm({ ...phenoForm, visual_state: e.target.value })} className={INPUT}>
-                    <option data-ev-id="ev_f616a1ab9d" value="">Estado visual</option>
-                    <option data-ev-id="ev_db22e56364" value="excelente">Excelente</option>
-                    <option data-ev-id="ev_69e137540f" value="bueno">Bueno</option>
-                    <option data-ev-id="ev_69f6b15796" value="regular">Regular</option>
-                    <option data-ev-id="ev_4e39f6864d" value="deteriorado">Deteriorado</option>
-                  </select>
+            <form data-ev-id="ev_815ee430a5" onSubmit={handlePhenoSubmit} className="mt-4 flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <NumericField label="Altura (cm)" value={phenoForm.height_cm} onChange={(value) => setPhenoForm({ ...phenoForm, height_cm: value })} />
+                  <NumericField label="Número de pencas" value={phenoForm.cladode_count} onChange={(value) => setPhenoForm({ ...phenoForm, cladode_count: value })} step="1" />
+                  <NumericField label="Largo de penca (cm)" value={phenoForm.cladode_length_cm} onChange={(value) => setPhenoForm({ ...phenoForm, cladode_length_cm: value })} />
+                  <NumericField label="Ancho de penca (cm)" value={phenoForm.cladode_width_cm} onChange={(value) => setPhenoForm({ ...phenoForm, cladode_width_cm: value })} />
+                  <NumericField label="Grosor de penca (mm)" value={phenoForm.cladode_thickness_mm} onChange={(value) => setPhenoForm({ ...phenoForm, cladode_thickness_mm: value })} />
+                  <NumericField label="Número de brotes nuevos" value={phenoForm.new_sprouts} onChange={(value) => setPhenoForm({ ...phenoForm, new_sprouts: value })} step="1" />
+                  <NumericField label="Largo de brote (cm)" value={phenoForm.sprout_length_cm} onChange={(value) => setPhenoForm({ ...phenoForm, sprout_length_cm: value })} />
+                  <NumericField label="Ancho de brote (cm)" value={phenoForm.sprout_width_cm} onChange={(value) => setPhenoForm({ ...phenoForm, sprout_width_cm: value })} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CheckDescription
+                    label="Manchas"
+                    checked={phenoForm.spots_present}
+                    description={phenoForm.spots_description}
+                    onCheckedChange={(checked) => setPhenoForm({ ...phenoForm, spots_present: checked })}
+                    onDescriptionChange={(value) => setPhenoForm({ ...phenoForm, spots_description: value })}
+                  />
+                  <CheckDescription
+                    label="Lesiones"
+                    checked={phenoForm.lesions_present}
+                    description={phenoForm.lesions_description}
+                    onCheckedChange={(checked) => setPhenoForm({ ...phenoForm, lesions_present: checked })}
+                    onDescriptionChange={(value) => setPhenoForm({ ...phenoForm, lesions_description: value })}
+                  />
+                  <CheckDescription
+                    label="Arrugas"
+                    checked={phenoForm.wrinkles_present}
+                    description={phenoForm.wrinkles_description}
+                    onCheckedChange={(checked) => setPhenoForm({ ...phenoForm, wrinkles_present: checked })}
+                    onDescriptionChange={(value) => setPhenoForm({ ...phenoForm, wrinkles_description: value })}
+                  />
+                  <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                    Turgencia
+                    <select value={phenoForm.turgor} onChange={(e) => setPhenoForm({ ...phenoForm, turgor: e.target.value })} className={INPUT}>
+                      <option value="">Seleccionar</option>
+                      <option value="turgente">Turgente</option>
+                      <option value="normal">Normal</option>
+                      <option value="flacida">Flácida</option>
+                    </select>
+                  </label>
+                  <TextField label="Textura" value={phenoForm.texture} onChange={(value) => setPhenoForm({ ...phenoForm, texture: value })} />
+                  <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                    Estado visual
+                    <select value={phenoForm.visual_state} onChange={(e) => setPhenoForm({ ...phenoForm, visual_state: e.target.value })} className={INPUT}>
+                      <option value="">Seleccionar</option>
+                      <option value="excelente">Excelente</option>
+                      <option value="bueno">Bueno</option>
+                      <option value="regular">Regular</option>
+                      <option value="deteriorado">Deteriorado</option>
+                    </select>
+                  </label>
                 </div>
                 <div data-ev-id="ev_e3d2f17744" className="flex items-center gap-3">
                   <input data-ev-id="ev_40f8c49049" type="file" accept="image/*" onChange={(e) => handlePhenoFile(e.target.files?.[0] ?? null)} className="hidden" id="pheno-photo" />
                   <label data-ev-id="ev_64cb38257e" htmlFor="pheno-photo" className="cursor-pointer rounded-lg border border-dashed border-border px-3 py-2 text-sm hover:bg-muted">
                     <Upload className="mr-1 inline h-4 w-4" /> Foto
                   </label>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">{phenoFile?.name ?? ''}</span>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    Color
                   <input data-ev-id="ev_7a332be57c" type="color" value={colorHex} onChange={(e) => setColorHex(e.target.value)} className="h-9 w-12 cursor-pointer rounded border border-border" />
+                  </label>
                   <span data-ev-id="ev_019324cb5e" className="text-xs text-muted-foreground">{colorHex}</span>
                 </div>
+                {phenoError && <p role="alert" className="text-sm text-destructive">{phenoError}</p>}
                 <button data-ev-id="ev_3a9a99523b" type="submit" disabled={busyPheno} className="rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">
                   {busyPheno ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Guardar'}
                 </button>
@@ -310,17 +432,16 @@ export default function PlantDetailV2() {
 
 function Stat({ icon, label, value, unit }: {icon: React.ReactNode;label: string;value?: number | null;unit?: string;}) {
   return (
-    <div data-ev-id="ev_87974cd63b" className="flex flex-col gap-0.5 bg-card p-3 text-center">
+    <div data-ev-id="ev_87974cd63b" className="flex min-h-[76px] flex-col justify-center gap-1 rounded-lg border border-border/70 bg-muted/30 p-2.5 text-center sm:p-3">
       <div data-ev-id="ev_29634e4f6a" className="flex items-center justify-center gap-1 text-xs text-muted-foreground">{icon}</div>
-      <div data-ev-id="ev_5a6c6ed7ef" className="text-sm font-semibold">{value != null ? `${value}${unit || ''}` : '—'}</div>
-      <div data-ev-id="ev_03d0fcf639" className="text-[10px] text-muted-foreground">{label}</div>
+      <div data-ev-id="ev_5a6c6ed7ef" className="text-sm font-semibold leading-tight">{value != null ? `${value}${unit || ''}` : '—'}</div>
+      <div data-ev-id="ev_03d0fcf639" className="text-[10px] leading-tight text-muted-foreground">{label}</div>
     </div>);
 
 }
 
 function HistorySection({ title, readings, type }: {title: string;readings: EnvReading[] | PhenoReading[];type: 'env' | 'pheno';}) {
   const [expanded, setExpanded] = useState(false);
-
   if (readings.length === 0) return null;
 
   const displayReadings = expanded ? readings : readings.slice(0, 5);
@@ -334,33 +455,116 @@ function HistorySection({ title, readings, type }: {title: string;readings: EnvR
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
       </button>
-      
+
       <div data-ev-id="ev_33cd525848" className="overflow-x-auto border-t border-border">
         <table data-ev-id="ev_13c878186a" className="w-full text-sm">
           <thead data-ev-id="ev_84af18ef37" className="bg-muted/30 text-xs uppercase text-muted-foreground">
-            <tr data-ev-id="ev_0350fb9568">
-              <th data-ev-id="ev_c35d92ad3b" className="px-3 py-2 text-left">Fecha</th>
-              {type === 'env' ?
-              <><th data-ev-id="ev_d30c2d94e4" className="px-3 py-2">Hum.</th><th data-ev-id="ev_7837f189ea" className="px-3 py-2">pH</th><th data-ev-id="ev_87242ebe12" className="px-3 py-2">Temp</th><th data-ev-id="ev_06be4cb8e1" className="px-3 py-2">Luz</th></> :
-
-              <><th data-ev-id="ev_310d74039e" className="px-3 py-2">Altura</th><th data-ev-id="ev_a5064b4071" className="px-3 py-2">Pencas</th><th data-ev-id="ev_d742740e59" className="px-3 py-2">Brotes</th><th data-ev-id="ev_0e9a921087" className="px-3 py-2">Estado</th></>
-              }
+            <tr>
+              <th className="px-3 py-2 text-left">Fecha</th>
+              {type === 'env' ? (
+                <>
+                  <th className="px-3 py-2">Humedad sustrato (%)</th><th className="px-3 py-2">pH</th>
+                  <th className="px-3 py-2">Temp. aire (°C)</th><th className="px-3 py-2">Humedad relativa (%)</th>
+                  <th className="px-3 py-2">Luz (lux)</th><th className="px-3 py-2">PAR (µmol/m²/s)</th>
+                  <th className="px-3 py-2">VPD (kPa)</th><th className="px-3 py-2">Precipitación (mm)</th>
+                  <th className="px-3 py-2">Horas desde lluvia</th>
+                </>
+              ) : (
+                <>
+                  <th className="px-3 py-2">Altura (cm)</th><th className="px-3 py-2">Pencas</th>
+                  <th className="px-3 py-2">Dimensiones penca (cm/mm)</th><th className="px-3 py-2">Brotes</th>
+                  <th className="px-3 py-2">Dimensiones brote (cm)</th><th className="px-3 py-2">Color</th>
+                  <th className="px-3 py-2">Manchas</th><th className="px-3 py-2">Lesiones</th>
+                  <th className="px-3 py-2">Arrugas</th><th className="px-3 py-2">Turgencia</th>
+                  <th className="px-3 py-2">Textura</th><th className="px-3 py-2">Estado</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody data-ev-id="ev_f5f7be016c">
-            {displayReadings.map((r) =>
-            <tr data-ev-id="ev_b406da706f" key={r.id} className="border-t border-border">
-                <td data-ev-id="ev_d982a58de8" className="px-3 py-2 text-muted-foreground">{new Date(r.measured_at).toLocaleDateString('es-MX')}</td>
-                {type === 'env' ?
-              <><td data-ev-id="ev_f4a6e0a42b" className="px-3 py-2 text-center">{(r as EnvReading).soil_moisture ?? '—'}</td><td data-ev-id="ev_df190f1445" className="px-3 py-2 text-center">{(r as EnvReading).soil_ph ?? '—'}</td><td data-ev-id="ev_78acbe9b28" className="px-3 py-2 text-center">{(r as EnvReading).air_temperature ?? '—'}</td><td data-ev-id="ev_d385b974c4" className="px-3 py-2 text-center">{(r as EnvReading).light_intensity ?? '—'}</td></> :
-
-              <><td data-ev-id="ev_53f8e56d11" className="px-3 py-2 text-center">{(r as PhenoReading).height_cm ?? '—'}</td><td data-ev-id="ev_52e4addcfe" className="px-3 py-2 text-center">{(r as PhenoReading).cladode_count ?? '—'}</td><td data-ev-id="ev_2f7677c4e9" className="px-3 py-2 text-center">{(r as PhenoReading).new_sprouts ?? '—'}</td><td data-ev-id="ev_a07ef7541f" className="px-3 py-2 text-center">{(r as PhenoReading).visual_state ?? '—'}</td></>
+            {displayReadings.map((reading) => {
+              const date = new Date(reading.measured_at).toLocaleDateString('es-MX');
+              if (type === 'env') {
+                const env = reading as EnvReading;
+                return (
+                  <tr key={reading.id} className="border-t border-border">
+                    <td className="px-3 py-2 text-muted-foreground">{date}</td>
+                    <td className="px-3 py-2 text-center">{env.soil_moisture ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.soil_ph ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.air_temperature ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.humidity_percent ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.light_intensity ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.par_umol_m2_s ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.vpd_kpa ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.precipitation_mm ?? '—'}</td>
+                    <td className="px-3 py-2 text-center">{env.hours_since_rain ?? '—'}</td>
+                  </tr>
+                );
               }
-              </tr>
-            )}
+
+              const pheno = reading as PhenoReading;
+              return (
+                <tr key={reading.id} className="border-t border-border">
+                  <td className="px-3 py-2 text-muted-foreground">{date}</td>
+                  <td className="px-3 py-2 text-center">{pheno.height_cm ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.cladode_count ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.cladode_length_cm ?? '—'} × {pheno.cladode_width_cm ?? '—'} / {pheno.cladode_thickness_mm ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.new_sprouts ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.sprout_length_cm ?? '—'} × {pheno.sprout_width_cm ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.color_hex ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{formatFinding(pheno.spots_present, pheno.spots_description)}</td>
+                  <td className="px-3 py-2 text-center">{formatFinding(pheno.lesions_present, pheno.lesions_description)}</td>
+                  <td className="px-3 py-2 text-center">{formatFinding(pheno.wrinkles_present, pheno.wrinkles_description)}</td>
+                  <td className="px-3 py-2 text-center">{pheno.turgor ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.texture ?? '—'}</td>
+                  <td className="px-3 py-2 text-center">{pheno.visual_state ?? '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-    </div>);
+    </div>
+  );
+}
 
+function NumericField({ label, value, onChange, step = 'any' }: {label: string;value: string;onChange: (value: string) => void;step?: string;}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+      {label}
+      <input type="number" step={step} value={value} onChange={(e) => onChange(e.target.value)} className={INPUT} />
+    </label>
+  );
+}
+
+function TextField({ label, value, onChange }: {label: string;value: string;onChange: (value: string) => void;}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+      {label}
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className={INPUT} />
+    </label>
+  );
+}
+
+function CheckDescription({ label, checked, description, onCheckedChange, onDescriptionChange }: {
+  label: string;
+  checked: boolean;
+  description: string;
+  onCheckedChange: (checked: boolean) => void;
+  onDescriptionChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange(e.target.checked)} />
+        {label}
+      </label>
+      {checked && <textarea value={description} onChange={(e) => onDescriptionChange(e.target.value)} className={INPUT} rows={2} placeholder={`Describe ${label.toLowerCase()}`} />}
+    </div>
+  );
+}
+
+function formatFinding(present: boolean | null, description: string | null) {
+  if (present === null) return '—';
+  return present ? description || 'Sí' : 'No';
 }

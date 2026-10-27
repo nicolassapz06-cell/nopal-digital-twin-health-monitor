@@ -131,6 +131,7 @@ export type Database = {
           air_temperature: number | null
           created_at: string
           ec: number | null
+          hours_since_rain: number | null
           hours_since_irrigation: number | null
           humidity_percent: number | null
           id: string
@@ -138,16 +139,20 @@ export type Database = {
           light_intensity: number | null
           measured_at: string
           notes: string | null
+          par_umol_m2_s: number | null
           plant_id: string
+          precipitation_mm: number | null
           soil_moisture: number | null
           soil_ph: number | null
           source: string
           user_id: string
+          vpd_kpa: number | null
         }
         Insert: {
           air_temperature?: number | null
           created_at?: string
           ec?: number | null
+          hours_since_rain?: number | null
           hours_since_irrigation?: number | null
           humidity_percent?: number | null
           id?: string
@@ -155,16 +160,20 @@ export type Database = {
           light_intensity?: number | null
           measured_at?: string
           notes?: string | null
+          par_umol_m2_s?: number | null
           plant_id: string
+          precipitation_mm?: number | null
           soil_moisture?: number | null
           soil_ph?: number | null
           source?: string
           user_id: string
+          vpd_kpa?: number | null
         }
         Update: {
           air_temperature?: number | null
           created_at?: string
           ec?: number | null
+          hours_since_rain?: number | null
           hours_since_irrigation?: number | null
           humidity_percent?: number | null
           id?: string
@@ -172,11 +181,14 @@ export type Database = {
           light_intensity?: number | null
           measured_at?: string
           notes?: string | null
+          par_umol_m2_s?: number | null
           plant_id?: string
+          precipitation_mm?: number | null
           soil_moisture?: number | null
           soil_ph?: number | null
           source?: string
           user_id?: string
+          vpd_kpa?: number | null
         }
         Relationships: [
           {
@@ -466,6 +478,8 @@ export type Database = {
           green_index: number | null
           height_cm: number | null
           id: string
+          lesions_description: string | null
+          lesions_present: boolean | null
           measured_at: string
           new_sprouts: number | null
           notes: string | null
@@ -474,8 +488,14 @@ export type Database = {
           spots_coverage_percent: number | null
           spots_description: string | null
           spots_present: boolean | null
+          sprout_length_cm: number | null
+          sprout_width_cm: number | null
+          texture: string | null
+          turgor: string | null
           user_id: string
           visual_state: string | null
+          wrinkles_description: string | null
+          wrinkles_present: boolean | null
         }
         Insert: {
           cladode_count?: number | null
@@ -491,6 +511,8 @@ export type Database = {
           green_index?: number | null
           height_cm?: number | null
           id?: string
+          lesions_description?: string | null
+          lesions_present?: boolean | null
           measured_at?: string
           new_sprouts?: number | null
           notes?: string | null
@@ -499,8 +521,14 @@ export type Database = {
           spots_coverage_percent?: number | null
           spots_description?: string | null
           spots_present?: boolean | null
+          sprout_length_cm?: number | null
+          sprout_width_cm?: number | null
+          texture?: string | null
+          turgor?: string | null
           user_id: string
           visual_state?: string | null
+          wrinkles_description?: string | null
+          wrinkles_present?: boolean | null
         }
         Update: {
           cladode_count?: number | null
@@ -516,6 +544,8 @@ export type Database = {
           green_index?: number | null
           height_cm?: number | null
           id?: string
+          lesions_description?: string | null
+          lesions_present?: boolean | null
           measured_at?: string
           new_sprouts?: number | null
           notes?: string | null
@@ -524,8 +554,14 @@ export type Database = {
           spots_coverage_percent?: number | null
           spots_description?: string | null
           spots_present?: boolean | null
+          sprout_length_cm?: number | null
+          sprout_width_cm?: number | null
+          texture?: string | null
+          turgor?: string | null
           user_id?: string
           visual_state?: string | null
+          wrinkles_description?: string | null
+          wrinkles_present?: boolean | null
         }
         Relationships: [
           {
